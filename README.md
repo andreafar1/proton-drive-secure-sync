@@ -18,67 +18,43 @@ pct enter ID_CONTAINER
 
 I comandi successivi si eseguono **dentro il container, come root**.
 
-### 2. Scarica il progetto e installalo
+### 2. Scarica da GitHub e avvia l'installazione guidata
+
+Dentro il container Ubuntu, come root:
 
 ```bash
-apt update
-apt install -y git
-git clone https://github.com/andreafar1/proton-drive-secure-sync.git /tmp/pdss-installer
-cd /tmp/pdss-installer
-less install-lxc.sh
+apt update && apt install -y git
+git clone https://github.com/andreafar1/proton-drive-secure-sync.git
+cd proton-drive-secure-sync
 bash install-lxc.sh
 ```
 
-Lo script:
-- installa Python, ambiente virtuale, dipendenze web e Rclone;
-- scarica il progetto in `/opt/proton-drive-secure-sync`;
-- crea l'utente non privilegiato `pdss`;
-- prepara `/var/lib/pdss/data` e `/srv/pdss-sync`;
-- genera una password web e una chiave di sessione;
-- crea e **abilita all'avvio** i servizi `pdss-web` e `pdss-scheduler`.
+L'installer pone direttamente le domande necessarie: **porta web** (predefinita 8080), **nome del remoto Rclone** (predefinito `proton`), **cartella locale** (predefinita `/srv/pdss-sync`) e **password di accesso web** (almeno 16 caratteri). Se accetti, avvia anche la procedura guidata `rclone config` per inserire le credenziali Proton Drive e l'eventuale 2FA; non devi creare manualmente il file di configurazione.
 
-**Salva subito la password mostrata a video:** l'installer la visualizza una sola volta. I servizi non vengono avviati prima della configurazione di Rclone.
+L'installer scarica e aggiorna il progetto in `/opt/proton-drive-secure-sync`, prepara Python, i due servizi systemd e le cartelle. Se il collegamento Rclone funziona, avvia automaticamente web e scheduler. Le impostazioni già esistenti e la password web vengono conservate in caso di reinstallazione.
 
-### 3. Configura Rclone per Proton Drive
+**Attenzione:** Rclone deve supportare il backend `protondrive`. Se la versione Ubuntu è troppo vecchia, installa una versione compatibile dalla fonte ufficiale prima di ripetere l'installazione. Le credenziali Proton sono richieste dalla procedura guidata Rclone, non dal nostro script. Il backend Proton Drive è ancora beta.
 
-Controlla innanzitutto la versione e la disponibilità del backend:
+### 3. Controlla i servizi
 
 ```bash
-rclone version
-rclone config providers | grep -i proton
+systemctl status pdss-web pdss-scheduler --no-pager
+hostname -I
 ```
 
-Se `protondrive` non è disponibile, aggiorna Rclone da una fonte ufficiale verificata prima di proseguire. Il backend Proton Drive può avere limitazioni e comportamenti sperimentali.
-
-Configura il remoto **con il nome `proton`** (che nell'app appare come `proton:`):
+Se la connessione Rclone non è riuscita, completa la configurazione:
 
 ```bash
 runuser -u pdss -- env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone config
-```
-
-Verifica il collegamento:
-
-```bash
 runuser -u pdss -- env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone lsd proton:
-```
-
-Se non funziona, **non abilitare ancora le attività programmate**. Il file `/etc/proton-drive-secure-sync/rclone.conf` contiene credenziali sensibili: non pubblicarlo né inviarlo ad altri.
-
-### 4. Avvia i servizi automaticamente
-
-```bash
 systemctl start pdss-web pdss-scheduler
-systemctl status pdss-web pdss-scheduler --no-pager
-systemctl is-enabled pdss-web pdss-scheduler
 ```
 
-Per consultare eventuali errori:
+Se hai scelto un nome remoto diverso da `proton`, sostituisci `proton:` nel comando di verifica.
 
-```bash
-journalctl -u pdss-web -u pdss-scheduler -n 80 --no-pager
-```
+### 4. Avvio automatico
 
-I servizi sono abilitati al riavvio automatico del container.
+I servizi `pdss-web` e `pdss-scheduler` sono abilitati con systemd: si avviano automaticamente al riavvio del container dopo una corretta configurazione.
 
 ### 5. Accedi alla pagina dall'indirizzo IP
 
@@ -94,7 +70,7 @@ Da un dispositivo nella stessa LAN, apri:
 http://IP_DEL_CONTAINER:8080
 ```
 
-Esempio puramente illustrativo: `http://192.168.1.150:8080`. Accedi con la password generata al punto 2. Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
+Esempio puramente illustrativo: `http://192.168.1.150:8080` (o la porta scelta durante l’installazione). Accedi con la password generata al punto 2. Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
 
 **Sicurezza:** HTTP non cifra le credenziali. Usa soltanto una LAN fidata o una VPN; per accesso remoto predisponi un reverse proxy HTTPS con controllo degli accessi. Non fare port forwarding pubblico della porta 8080.
 
