@@ -21,17 +21,34 @@ class CoreTests(unittest.TestCase):
         run.return_value.stdout = json.dumps([{'Path':'a.txt','Size':2},{'Path':'../bad','Size':1}])
         self.assertEqual(RcloneClient('proton:').list_files(), [{'path':'a.txt','size':2}])
 
+    @patch('secure_sync.core.subprocess.run')
+    def test_entries_include_folders(self, run):
+        run.return_value.returncode = 0
+        run.return_value.stdout = json.dumps([
+            {'Path':'Documents','IsDir':True,'Size':0,'ModTime':'2026-01-01T12:00:00Z'},
+            {'Path':'Documents/test.txt','IsDir':False,'Size':12},
+            {'Path':'../escape','IsDir':False,'Size':1}])
+        entries = RcloneClient('proton:').list_entries()
+        self.assertEqual(len(entries), 2)
+        self.assertTrue(entries[0]['is_dir'])
+        self.assertEqual(entries[1]['path'], 'Documents/test.txt')
+
+    def test_entries_invalid_json(self):
+        c = RcloneClient('proton:')
+        with patch.object(c, '_run', return_value='not json'):
+            with self.assertRaises(SyncError): c.list_entries()
+
     def test_upload_refuses_existing(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp)/'a.txt'; p.write_text('x')
-            with patch.object(RcloneClient, 'list_files', return_value=[{'path':'a.txt','size':1}]):
+            with patch.object(RcloneClient, 'list_entries', return_value=[{'path':'a.txt','size':1,'is_dir':False}]):
                 with self.assertRaises(SyncError): RcloneClient('proton:').upload(p)
 
     def test_upload_immutable(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp)/'a.txt'; p.write_text('x')
             c = RcloneClient('proton:')
-            with patch.object(c, 'list_files', return_value=[]), patch.object(c, '_run', return_value='') as run:
+            with patch.object(c, 'list_entries', return_value=[]), patch.object(c, '_run', return_value='') as run:
                 c.upload(p)
                 self.assertIn('--immutable', run.call_args.args)
 
