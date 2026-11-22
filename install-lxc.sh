@@ -1,76 +1,83 @@
 #!/usr/bin/env bash
-# Run as root inside an Ubuntu LXC container with systemd.
 set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 APP=/opt/proton-drive-secure-sync
 CONF=/etc/proton-drive-secure-sync
-USER_NAME=pdss
-if [[ ${EUID} -ne 0 ]]; then echo "Run with sudo or as root"; exit 1; fi
-if [[ ! -d /run/systemd/system ]]; then echo "This container is not running systemd"; exit 1; fi
-echo "=== Installazione guidata Proton Drive Secure Sync (LXC Ubuntu) ==="
-read -r -p "Porta web [8080]: " PDSS_PORT
-PDSS_PORT=${PDSS_PORT:-8080}
-[[ $PDSS_PORT =~ ^[0-9]+$ ]] && (( PDSS_PORT>=1024 && PDSS_PORT<=65535 )) || { echo "Porta non valida"; exit 1; }
-read -r -p "Nome remoto Rclone [proton]: " PDSS_NAME
-PDSS_NAME=${PDSS_NAME:-proton}
-[[ $PDSS_NAME =~ ^[a-zA-Z][a-zA-Z0-9_-]{0,50}$ ]] || { echo "Nome remoto non valido"; exit 1; }
-read -r -p "Cartella locale da sincronizzare [/srv/pdss-sync]: " PDSS_LOCAL
-PDSS_LOCAL=${PDSS_LOCAL:-/srv/pdss-sync}
-[[ $PDSS_LOCAL == /* && $PDSS_LOCAL != *" "* && $PDSS_LOCAL != *".."* && $PDSS_LOCAL != *"="* && $PDSS_LOCAL != *"'"* && $PDSS_LOCAL != *'"'* ]] || { echo "Cartella locale non valida"; exit 1; }
-[[ $PDSS_LOCAL != / && $PDSS_LOCAL != /etc && $PDSS_LOCAL != /root && $PDSS_LOCAL != /var && $PDSS_LOCAL != /opt ]] || { echo "Cartella troppo ampia"; exit 1; }
-echo
+[[ $EUID -eq 0 ]] || { echo "Esegui come root nel container LXC"; exit 1; }
+[[ -d /run/systemd/system ]] || { echo "systemd non disponibile"; exit 1; }
+echo "=== Installazione guidata Proton Drive Secure Sync ==="
+read -r -p "Porta web [8080]: " PORT
+PORT=${PORT:-8080}
+[[ $PORT =~ ^[0-9]+$ ]] && (( PORT>=1024 && PORT<=65535 )) || { echo "Porta non valida"; exit 1; }
+read -r -p "Nome remoto Rclone [proton]: " REMOTE
+REMOTE=${REMOTE:-proton}
+[[ $REMOTE =~ ^[a-zA-Z][a-zA-Z0-9_-]{0,50}$ ]] || { echo "Remoto non valido"; exit 1; }
+read -r -p "Cartella locale [/srv/pdss-sync]: " SYNC
+SYNC=${SYNC:-/srv/pdss-sync}
+[[ $SYNC == /* && $SYNC != *" "* && $SYNC != *".."* && $SYNC != *"="* && $SYNC != *"'"* && $SYNC != *'"'* ]] || { echo "Percorso non valido"; exit 1; }
+[[ $SYNC != / && $SYNC != /etc && $SYNC != /root && $SYNC != /var && $SYNC != /opt ]] || { echo "Cartella troppo ampia"; exit 1; }
 apt-get update
 apt-get install -y git python3 python3-venv python3-pip rclone ca-certificates
-if ! id "$USER_NAME" >/dev/null 2>&1; then
-    useradd --system --home-dir /var/lib/pdss --create-home --shell /usr/sbin/nologin "$USER_NAME"
-fi
+id pdss >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/pdss --shell /usr/sbin/nologin pdss
 if [[ -d "$APP/.git" ]]; then
-    git -C "$APP" pull --ff-only
+  git -C "$APP" pull --ff-only
 elif [[ ! -e "$APP" ]]; then
-    git clone https://github.com/andreafar1/proton-drive-secure-sync.git "$APP"
+  git clone https://github.com/andreafar1/proton-drive-secure-sync.git "$APP"
 else
-    echo "$APP exists but is not a git checkout; stopping"; exit 1
+  echo "Directory applicazione occupata da altri file"; exit 1
 fi
 python3 -m venv "$APP/.venv"
-"$APP/.venv/bin/pip" install --disable-pip-version-check -r "$APP/requirements-web.txt"
-install -d -o "$USER_NAME" -g "$USER_NAME" -m 0750 /var/lib/pdss /var/lib/pdss/data "$PDSS_LOCAL"
-install -d -o root -g "$USER_NAME" -m 0750 "$CONF"
-if [[ ! -f "$CONF/app.env" ]]; then
-    SECRET=$("$APP/.venv/bin/python" -c 'import secrets; print(secrets.token_urlsafe(48))')
-    read -r -s -p "Scegli password web (minimo 16 caratteri): " PASS
-    echo
-    [[ ${#PASS} -ge 16 && "$PASS" != *" "* && "$PASS" != *"="* && "$PASS" != *"'"* && "$PASS" != *'"'* && "$PASS" != *'
-    cat >"$CONF/app.env" <<EOF
-PDSS_REMOTE=$PDSS_NAME:
+"$APP/.venv/bin/pip" install -r "$APP/requirements-web.txt"
+install -d -o pdss -g pdss -m 0750 /var/lib/pdss/data
+install -d -o root -g pdss -m 0750 "$CONF"
+if [[ ! -e "$SYNC" ]]; then
+  install -d -o pdss -g pdss -m 0750 "$SYNC"
+else
+  [[ -d "$SYNC" && ! -L "$SYNC" ]] || { echo "Cartella locale non valida"; exit 1; }
+  echo "Cartella esistente: permessi conservati, verifica accesso utente pdss."
+fi
+if [[ -f "$CONF/app.env" ]]; then
+  PASS=$(sed -n 's/^PDSS_PASSWORD=//p' "$CONF/app.env" | head -1)
+  SECRET=$(sed -n 's/^PDSS_SESSION_SECRET=//p' "$CONF/app.env" | head -1)
+else
+  PASS=""
+  SECRET=""
+fi
+if [[ -n "$PASS" && -n "$SECRET" ]]; then
+  echo "Password precedente conservata."
+else
+  read -r -s -p "Password web (minimo 16 caratteri): " PASS
+  echo
+  [[ ${#PASS} -ge 16 && "$PASS" != *" "* && "$PASS" != *"="* && "$PASS" != *"'"* && "$PASS" != *'"'* && "$PASS" != *'$'* && "$PASS" != *'\'* ]] || { echo "Password non valida"; exit 1; }
+  read -r -s -p "Ripeti password: " CONFIRM
+  echo
+  [[ $PASS == "$CONFIRM" ]] || { echo "Password diverse"; exit 1; }
+  SECRET=$("$APP/.venv/bin/python" -c 'import secrets; print(secrets.token_urlsafe(48))')
+fi
+cat >"$CONF/app.env" <<EOF
+PDSS_REMOTE=$REMOTE:
 PDSS_PASSWORD=$PASS
 PDSS_SESSION_SECRET=$SECRET
-PDSS_PORT=$PDSS_PORT
+PDSS_PORT=$PORT
 PDSS_WORKDIR=/var/lib/pdss/data
 PDSS_DB=/var/lib/pdss/data/schedules.sqlite3
-PDSS_SYNC_ROOT=$PDSS_LOCAL
+PDSS_SYNC_ROOT=$SYNC
 PDSS_MAX_UPLOAD_MB=100
 PDSS_HTTPS=0
 RCLONE_CONFIG=$CONF/rclone.conf
 EOF
-    chown root:"$USER_NAME" "$CONF/app.env"
-    chmod 0640 "$CONF/app.env"
-    echo
-    echo "Password web impostata (non mostrata). Conservala."
-    echo
-else
-    echo "Preserving existing $CONF/app.env and password"
-fi
+chown root:pdss "$CONF/app.env"
+chmod 0640 "$CONF/app.env"
+unset PASS SECRET CONFIRM
 if [[ ! -f "$CONF/rclone.conf" ]]; then
-    install -o "$USER_NAME" -g "$USER_NAME" -m 0600 /dev/null "$CONF/rclone.conf"
+  install -o pdss -g pdss -m 0600 /dev/null "$CONF/rclone.conf"
 fi
 cat >/etc/systemd/system/pdss-web.service <<'EOF'
 [Unit]
-Description=Proton Drive Secure Sync web UI
+Description=Proton Drive Secure Sync Web
 After=network-online.target
 Wants=network-online.target
-
 [Service]
-Type=simple
 User=pdss
 Group=pdss
 WorkingDirectory=/opt/proton-drive-secure-sync
@@ -82,20 +89,17 @@ UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/pdss/data $PDSS_LOCAL
+ReadWritePaths=/var/lib/pdss/data
 PrivateTmp=true
-
 [Install]
 WantedBy=multi-user.target
 EOF
 cat >/etc/systemd/system/pdss-scheduler.service <<EOF
 [Unit]
-Description=Proton Drive Secure Sync scheduler
+Description=Proton Drive Secure Sync Scheduler
 After=network-online.target
 Wants=network-online.target
-
 [Service]
-Type=simple
 User=pdss
 Group=pdss
 WorkingDirectory=/opt/proton-drive-secure-sync
@@ -107,38 +111,24 @@ UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/pdss/data $PDSS_LOCAL
+ReadWritePaths=/var/lib/pdss/data $SYNC
 PrivateTmp=true
-
 [Install]
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable pdss-web.service pdss-scheduler.service
-echo "Servizi installati. Configura Rclone ora (tipo protondrive, nome $PDSS_NAME)."
-read -r -p "Avviare la configurazione guidata Rclone? [S/n]: " ANSWER
+systemctl enable pdss-web pdss-scheduler
+echo "Configura Rclone con un remoto chiamato $REMOTE, tipo protondrive."
+read -r -p "Aprire la configurazione Rclone ora? [S/n]: " ANSWER
 if [[ $ANSWER != n && $ANSWER != N ]]; then
-    runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone config
+  runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone config
 fi
-if runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone lsd "$PDSS_NAME:" >/dev/null; then
-    systemctl restart pdss-web pdss-scheduler
-    echo "Installazione completata. Apri http://IP_DEL_CONTAINER:$PDSS_PORT"
-    echo "IP rilevato: $(hostname -I)"
+if runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone lsd "$REMOTE:" >/dev/null; then
+  systemctl restart pdss-web pdss-scheduler
+  echo "Installazione completata! Apri http://IP_DEL_CONTAINER:$PORT"
+  echo "IP del container: $(hostname -I)"
 else
-    echo "Remoto non verificato: servizi abilitati, non avviati automaticamente ora."
-    echo "Riconfigura Rclone e poi esegui: systemctl start pdss-web pdss-scheduler"
+  echo "Connessione remota non verificata. Configura Rclone e poi esegui:"
+  echo "systemctl start pdss-web pdss-scheduler"
 fi
-echo "Configura il remoto Rclone '$PDSS_NAME' di tipo protondrive."
-read -r -p "Aprire configurazione guidata Rclone ora? [S/n]: " ANSWER
-if [[ $ANSWER != n && $ANSWER != N ]]; then
-    runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone config
-fi
-if runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone lsd "$PDSS_NAME:" >/dev/null; then
-    systemctl restart pdss-web pdss-scheduler
-    echo "Installazione completata! Apri http://IP_CONTAINER:$PDSS_PORT"
-    echo "IP container: $(hostname -I)"
-else
-    echo "Remoto non verificato. Configura Rclone e poi avvia:"
-    echo "systemctl start pdss-web pdss-scheduler"
-fi
-echo "Usa la porta web solo in LAN fidata o tramite VPN/HTTPS."
+echo "Non esporre la porta web HTTP a Internet: usa LAN fidata o VPN/HTTPS."
