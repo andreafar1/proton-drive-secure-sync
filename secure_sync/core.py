@@ -54,6 +54,30 @@ class RcloneClient:
             raise SyncError(f'Rclone exited with status {proc.returncode}')
         return proc.stdout
 
+    def list_entries(self) -> list[dict]:
+        raw = self._run('lsjson', self.remote, '--recursive')
+        try:
+            items = json.loads(raw)
+            if not isinstance(items, list):
+                raise ValueError()
+            entries = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    path = validate_path(item['Path'])
+                except (KeyError, SyncError):
+                    continue
+                is_dir = item.get('IsDir') is True
+                size = item.get('Size', 0)
+                if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+                    continue
+                entries.append({'path': path, 'size': size, 'is_dir': is_dir,
+                                'modified': str(item.get('ModTime') or '')})
+            return sorted(entries, key=lambda e: (not e['is_dir'], e['path'].lower()))
+        except (ValueError, TypeError) as e:
+            raise SyncError('Unexpected Rclone listing') from e
+
     def list_files(self) -> list[dict]:
         raw = self._run('lsjson', self.remote, '--files-only', '--recursive')
         try:
@@ -82,7 +106,7 @@ class RcloneClient:
             raise SyncError('Select a regular, non-symlink file')
         name = validate_name(local.name)
         # Conservative preflight; does not eliminate remote concurrent-write races.
-        existing = self.list_files()
+        existing = self.list_entries()
         if any(item['path'] == name for item in existing):
             raise SyncError('Remote file already exists; refusing upload')
         target = self.remote + name
