@@ -1,4 +1,4 @@
-# Proton Drive Secure Sync — Web container v0.4 (experimental)
+# Proton Drive Secure Sync — Web container v0.5 (experimental)
 
 Browser-based manual Rclone file browser and upload/download frontend for Docker. **Not an official Proton app, not audited, and not automatic synchronization.** The previous GTK3 desktop client is still available as `python3 run.py`.
 
@@ -20,7 +20,7 @@ Configure a compatible Rclone installation on the **host** using `rclone config`
 ```bash
 mkdir -p config
 sudo install -m 0444 ~/.config/rclone/rclone.conf ./config/rclone.conf
-docker compose up -d --build
+mkdir -p sync\n# Ensure the mounted folder is readable/writable by container UID 10001:\nsudo chown -R 10001:10001 sync\ndocker compose up -d --build
 docker compose logs --tail=60
 ```
 
@@ -34,6 +34,26 @@ http://SERVER_IP:8080
 
 Replace `SERVER_IP` with the Docker host's actual IP address. Allow TCP 8080 in the host firewall **only from your trusted LAN/VPN**. The Docker Compose file binds port 8080 to all host interfaces. **HTTP is unencrypted**; for access across the internet, do not expose 8080 directly. Put the service behind an HTTPS reverse proxy with access controls or a VPN; set `PDSS_HTTPS=1` when HTTPS is correctly configured. Never port-forward 8080 to the public internet.
 
+## Scheduled one-way copy jobs (v0.5)
+
+The **Sincronizzazione** tab lets you create jobs with a name, direction, local folder relative to `/sync`, remote folder relative to the Rclone remote, and frequency: manual, 15 min, 30 min, 1 hour, 6 hours, 12 hours, or 24 hours.
+
+Jobs start **disabled**. Use **Avvia ora** for a one-time copy, or **Attiva** to schedule recurring runs. A dedicated `scheduler` container handles jobs even after the browser closes. Job configuration, last run, last status and next run are stored in `/data/schedules.sqlite3` on the named Docker volume.
+
+**Local folders must already exist** within the host folder mounted to `/sync`. The default is `./sync` next to `compose.yaml`. To sync a different host directory, add `PDSS_LOCAL_DIR=/absolute/path/to/folder` to `.env`, ensure UID 10001 can read it and (for downloads) write to it, then recreate the containers. Inside the UI, specify a relative path such as `Documents` (or `.` for the mounted root).
+
+Examples:
+- `Locale → Proton Drive`, local `Documents`, remote `Backup/Documents`, every 60 minutes: copy new files from `/sync/Documents` into the remote subfolder.
+- `Proton Drive → Locale`, local `CloudCopy`, remote `Documents`, every 24 hours: copy new remote files into `/sync/CloudCopy`.
+
+**This is not full sync:** the scheduler uses `rclone copy --ignore-existing`, which skips destination files already present even if their contents changed. It does not delete destination files. The operation is not transactional, and remote concurrent writers or incomplete transfers still require independent testing. There is no bidirectional mode or automatic conflict resolution.
+
+Check status:
+```bash
+docker compose ps
+docker compose logs --tail=50 scheduler
+```
+
 ## Features
 
 - Responsive purple web UI inspired by the desktop mockup
@@ -42,7 +62,7 @@ Replace `SERVER_IP` with the Docker host's actual IP address. Allow TCP 8080 in 
 - Manual upload to **remote root** (100 MB default maximum), manual download from any browsed folder
 - Confirmation dialogs; session-only transfer activity and operation log in the browser
 - Server-side remote path validation; local staging, no-clobber publication for downloads
-- No delete, overwrite command, scheduled synchronization, or automatic background operations
+- No delete, overwrite command, or bidirectional synchronization; scheduled one-way non-destructive copy jobs are opt-in
 - Rclone config mounted read-only; container runs as non-root, drops Linux capabilities, read-only root filesystem
 
 ## Limitations and safety
@@ -51,7 +71,7 @@ Replace `SERVER_IP` with the Docker host's actual IP address. Allow TCP 8080 in 
 - Upload collision preflight and Rclone `--immutable` are not atomic protection against concurrent remote writes.
 - SHA-256 checks the local staged file, not the authenticity of the remote file.
 - Uploads/downloads are synchronous per HTTP request and may time out on network interruptions. No cancellation or true progress bar yet.
-- The operation log is not persistent. The Transfer tab is a session activity feed, not a queue.
+- The browser operation log is not persistent. Scheduled jobs retain only their last result and timestamps; the Transfer tab is a browser session feed, not a transfer progress queue.\n- The scheduler runs one job at a time and may take up to an hour per job. It does not automatically resolve changed files or conflicts.
 - Authentication is a single shared password, not a multi-user identity system. There is no rate limiter; restrict access at the reverse proxy/firewall.
 - Secrets and Rclone configuration remain on the host. File permissions on the mounted Rclone config must allow container UID 10001 to read it; the sample `0444` is a compatibility choice, not ideal for a shared host. Prefer an ACL or a dedicated service-owned copy with restricted permissions.
 - The web application has not yet been exercised inside a live Docker container in this development environment. Test with disposable data first.
