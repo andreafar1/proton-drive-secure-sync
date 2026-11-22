@@ -6,6 +6,8 @@ Interfaccia web sperimentale per consultare Proton Drive tramite Rclone, trasfer
 
 ## Installazione su Ubuntu LXC in Proxmox (consigliata)
 
+**Installazione rapida:** bastano `git clone`, `cd` e `bash install-lxc.sh`: durante la procedura scegli porta, password, cartella e connessione Proton Drive. Non è necessario Docker.
+
 Questa installazione funziona **dentro un container Ubuntu LXC già esistente**, senza Docker. Richiede systemd, accesso root nel container, rete funzionante e una versione di Rclone compatibile con il backend Proton Drive.
 
 ### 1. Apri la console del container
@@ -42,7 +44,7 @@ systemctl status pdss-web pdss-scheduler --no-pager
 hostname -I
 ```
 
-Se la connessione Rclone non è riuscita, completa la configurazione:
+Se la connessione Rclone non è riuscita, completa la configurazione (qui si assume il remoto predefinito `proton`):
 
 ```bash
 runuser -u pdss -- env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone config
@@ -70,17 +72,19 @@ Da un dispositivo nella stessa LAN, apri:
 http://IP_DEL_CONTAINER:8080
 ```
 
-Esempio puramente illustrativo: `http://192.168.1.150:8080` (o la porta scelta durante l’installazione). Accedi con la password generata al punto 2. Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
+Esempio puramente illustrativo: `http://192.168.1.150:8080` (o la porta scelta durante l’installazione). Accedi con la password scelta durante l'installazione (punto 2). Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
 
 **Sicurezza:** HTTP non cifra le credenziali. Usa soltanto una LAN fidata o una VPN; per accesso remoto predisponi un reverse proxy HTTPS con controllo degli accessi. Non fare port forwarding pubblico della porta 8080.
 
 ### 6. Scegli le cartelle da copiare e la frequenza
 
-La cartella locale esposta all'applicazione è:
+La cartella locale predefinita esposta all'applicazione è:
 
 ```text
 /srv/pdss-sync
 ```
+
+Se hai scelto un percorso diverso durante l'installazione, usa quello al posto di `/srv/pdss-sync`.
 
 Crea, ad esempio:
 
