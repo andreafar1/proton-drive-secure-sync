@@ -7,6 +7,7 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 from secure_sync.core import RcloneClient, SyncError, validate_path
+from scheduler import list_jobs, add_job, update_job, toggle_job, request_run, delete_job
 
 app = Flask(__name__, template_folder='web/templates', static_folder='web/static')
 secret = os.environ.get('PDSS_SESSION_SECRET', '')
@@ -124,6 +125,62 @@ def download():
     except Exception:
         folder.cleanup()
         raise
+
+
+@app.get('/api/schedules')
+def schedules():
+    require_auth()
+    return jsonify(jobs=list_jobs())
+
+@app.post('/api/schedules')
+def schedules_add():
+    require_auth()
+    require_csrf()
+    try:
+        job_id = add_job(request.get_json(silent=True) or {})
+        return jsonify(ok=True, id=job_id), 201
+    except (ValueError, SyncError, OSError) as exc:
+        return jsonify(error=str(exc)), 400
+
+@app.put('/api/schedules/<int:job_id>')
+def schedules_update(job_id):
+    require_auth()
+    require_csrf()
+    try:
+        update_job(job_id, request.get_json(silent=True) or {})
+        return jsonify(ok=True)
+    except (ValueError, SyncError, OSError) as exc:
+        return jsonify(error=str(exc)), 400
+
+@app.post('/api/schedules/<int:job_id>/enable')
+def schedules_enable(job_id):
+    require_auth()
+    require_csrf()
+    try:
+        toggle_job(job_id, (request.get_json(silent=True) or {}).get('enabled'))
+        return jsonify(ok=True)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
+@app.post('/api/schedules/<int:job_id>/run')
+def schedules_run(job_id):
+    require_auth()
+    require_csrf()
+    try:
+        request_run(job_id)
+        return jsonify(ok=True)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
+@app.delete('/api/schedules/<int:job_id>')
+def schedules_delete(job_id):
+    require_auth()
+    require_csrf()
+    try:
+        delete_job(job_id)
+        return jsonify(ok=True)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
 
 @app.errorhandler(RequestEntityTooLarge)
 def too_large(error):
