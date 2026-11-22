@@ -1,4 +1,4 @@
-# Proton Drive Secure Sync v0.2 — experimental
+# Proton Drive Secure Sync v0.3 — experimental
 
 A GTK3 Ubuntu GUI for **manual** uploads/downloads through a separately configured Rclone remote. This is not an official Proton app, not an audited security product, and **not an automatic synchronizer**. Do not use it as the only copy of valuable data.
 
@@ -17,7 +17,7 @@ Run the last two commands from this directory, **without sudo**. Configure a Pro
 
 ## Capabilities
 
-- List remote files; manually upload/download one file at a time with confirmation dialogs.
+- Browse remote folders with a purple-accented GTK3 sidebar, breadcrumb and parent-folder navigation.\n- List remote files and folders with size and modification time.\n- View a session-only operation log, transfer activity, and safety information.\n- Manually upload files to the **remote root only** or download selected files from any browsed folder, with confirmation dialogs.\n- The Transfer and Log tabs share the session log; Settings currently displays information rather than providing a separate settings panel.\n- No cancellation, progress percentage, or persistent operation history yet.
 - No delete, sync, move, rename or overwrite command.
 - Download into a private staging directory; compute a local SHA-256 and check for changes during staging; publish via an atomic **no-clobber hard link** to the destination directory.
 - Open destination directory with `O_NOFOLLOW`; refuse existing filenames and symlink directory destinations; remove incomplete staging data on ordinary failures.
