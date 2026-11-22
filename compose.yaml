@@ -1,0 +1,26 @@
+services:
+  proton-drive-secure-sync:
+    build: .
+    container_name: proton-drive-secure-sync
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PDSS_REMOTE: ${PDSS_REMOTE:-proton:}
+      PDSS_PASSWORD: ${PDSS_PASSWORD:?Set PDSS_PASSWORD in .env}
+      PDSS_SESSION_SECRET: ${PDSS_SESSION_SECRET:?Set PDSS_SESSION_SECRET in .env}
+      PDSS_MAX_UPLOAD_MB: ${PDSS_MAX_UPLOAD_MB:-100}
+      PDSS_HTTPS: ${PDSS_HTTPS:-0}
+      RCLONE_CONFIG: /config/rclone.conf
+    volumes:
+      - ./config/rclone.conf:/config/rclone.conf:ro
+      - pdss_data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+volumes:
+  pdss_data:
