@@ -107,7 +107,7 @@ UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/pdss/data /srv/pdss-sync
+ReadWritePaths=/var/lib/pdss/data $PDSS_LOCAL
 PrivateTmp=true
 
 [Install]
@@ -128,96 +128,17 @@ else
     echo "Remoto non verificato: servizi abilitati, non avviati automaticamente ora."
     echo "Riconfigura Rclone e poi esegui: systemctl start pdss-web pdss-scheduler"
 fi
-echo "Next: configure Rclone for pdss user:"
-echo "  sudo -u pdss env RCLONE_CONFIG=$CONF/rclone.conf rclone config"
-echo "Then test remote and start:"
-echo "  sudo -u pdss env RCLONE_CONFIG=$CONF/rclone.conf rclone lsd proton:"
-echo "  systemctl start pdss-web pdss-scheduler"
-echo "  hostname -I"
-* ]] || { echo "Password non valida"; exit 1; }
-    read -r -s -p "Conferma password web: " CONFIRM
-    echo
-    [[ "$PASS" == "$CONFIRM" ]] || { echo "Password non coincidente"; exit 1; }
-    unset CONFIRM
-    cat >"$CONF/app.env" <<EOF
-PDSS_REMOTE=proton:
-PDSS_PASSWORD=$PASS
-PDSS_SESSION_SECRET=$SECRET
-PDSS_WORKDIR=/var/lib/pdss/data
-PDSS_DB=/var/lib/pdss/data/schedules.sqlite3
-PDSS_SYNC_ROOT=/srv/pdss-sync
-PDSS_MAX_UPLOAD_MB=100
-PDSS_HTTPS=0
-RCLONE_CONFIG=$CONF/rclone.conf
-EOF
-    chown root:"$USER_NAME" "$CONF/app.env"
-    chmod 0640 "$CONF/app.env"
-    echo
-    echo "IMPORTANT: save this generated web password now (shown only once):"
-    echo "$PASS"
-    echo
+echo "Configura il remoto Rclone '$PDSS_NAME' di tipo protondrive."
+read -r -p "Aprire configurazione guidata Rclone ora? [S/n]: " ANSWER
+if [[ $ANSWER != n && $ANSWER != N ]]; then
+    runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone config
+fi
+if runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone lsd "$PDSS_NAME:" >/dev/null; then
+    systemctl restart pdss-web pdss-scheduler
+    echo "Installazione completata! Apri http://IP_CONTAINER:$PDSS_PORT"
+    echo "IP container: $(hostname -I)"
 else
-    echo "Preserving existing $CONF/app.env and password"
+    echo "Remoto non verificato. Configura Rclone e poi avvia:"
+    echo "systemctl start pdss-web pdss-scheduler"
 fi
-if [[ ! -f "$CONF/rclone.conf" ]]; then
-    install -o "$USER_NAME" -g "$USER_NAME" -m 0600 /dev/null "$CONF/rclone.conf"
-fi
-cat >/etc/systemd/system/pdss-web.service <<'EOF'
-[Unit]
-Description=Proton Drive Secure Sync web UI
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=pdss
-Group=pdss
-WorkingDirectory=/opt/proton-drive-secure-sync
-EnvironmentFile=/etc/proton-drive-secure-sync/app.env
-ExecStart=/opt/proton-drive-secure-sync/.venv/bin/gunicorn --workers 2 --threads 2 --timeout 3600 --bind 0.0.0.0:8080 webapp:app
-Restart=on-failure
-RestartSec=5
-UMask=0077
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/pdss/data /srv/pdss-sync
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-cat >/etc/systemd/system/pdss-scheduler.service <<'EOF'
-[Unit]
-Description=Proton Drive Secure Sync scheduler
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=pdss
-Group=pdss
-WorkingDirectory=/opt/proton-drive-secure-sync
-EnvironmentFile=/etc/proton-drive-secure-sync/app.env
-ExecStart=/opt/proton-drive-secure-sync/.venv/bin/python scheduler.py
-Restart=on-failure
-RestartSec=5
-UMask=0077
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/pdss/data /srv/pdss-sync
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl enable pdss-web.service pdss-scheduler.service
-echo "Services installed and enabled, but NOT started."
-echo "Next: configure Rclone for pdss user:"
-echo "  sudo -u pdss env RCLONE_CONFIG=$CONF/rclone.conf rclone config"
-echo "Then test remote and start:"
-echo "  sudo -u pdss env RCLONE_CONFIG=$CONF/rclone.conf rclone lsd proton:"
-echo "  systemctl start pdss-web pdss-scheduler"
-echo "  hostname -I"
+echo "Usa la porta web solo in LAN fidata o tramite VPN/HTTPS."
