@@ -6,7 +6,7 @@ COPY requirements-web.txt .
 RUN pip install --no-cache-dir -r requirements-web.txt
 COPY secure_sync ./secure_sync
 COPY web ./web
-COPY webapp.py ./
+COPY webapp.py scheduler.py ./
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin appuser && mkdir -p /data /config && chown appuser:appuser /data
 USER appuser
 EXPOSE 8080
