@@ -1,3 +1,36 @@
+## Native Ubuntu LXC (Proxmox) installation — no Docker
+
+Inside an Ubuntu LXC container running systemd, download and **review** the installer:
+
+```bash
+apt update && apt install -y git
+git clone https://github.com/andreafar1/proton-drive-secure-sync.git /tmp/pdss-installer
+less /tmp/pdss-installer/install-lxc.sh
+bash /tmp/pdss-installer/install-lxc.sh
+```
+
+The script installs Python/Rclone, checks out the project in `/opt/proton-drive-secure-sync`, creates a `pdss` service user, Python virtual environment, two systemd services, a generated web password and session secret. It **does not start the services** until you configure Rclone. Save the printed password; it is only shown once.
+
+```bash
+sudo -u pdss env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone config
+sudo -u pdss env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone lsd proton:
+systemctl start pdss-web pdss-scheduler
+systemctl status pdss-web pdss-scheduler --no-pager
+hostname -I
+```
+
+Access `http://CONTAINER_IP:8080` from the same LAN. The scheduler's local sync root is `/srv/pdss-sync` in the LXC; create subdirectories there with `pdss` ownership before adding jobs in the UI. To expose host files, use a Proxmox LXC bind mount and carefully map UID/GID permissions; do not turn the container privileged just to fix permissions.
+
+To update:
+```bash
+cd /opt/proton-drive-secure-sync
+git pull --ff-only
+/opt/proton-drive-secure-sync/.venv/bin/pip install -r requirements-web.txt
+systemctl restart pdss-web pdss-scheduler
+```
+
+**Important:** HTTP is unencrypted; restrict port 8080 to a trusted LAN or VPN and use HTTPS via reverse proxy for remote access. The Rclone Proton Drive backend is beta; verify the installed Rclone supports `protondrive` and test with disposable data. This installer has not been integration-tested inside a live Proxmox LXC.
+
 # Proton Drive Secure Sync — Web container v0.5 (experimental)
 
 Browser-based manual Rclone file browser and upload/download frontend for Docker. **Not an official Proton app, not audited, and not automatic synchronization.** The previous GTK3 desktop client is still available as `python3 run.py`.
