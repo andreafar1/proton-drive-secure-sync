@@ -1,27 +1,139 @@
-## Native Ubuntu LXC (Proxmox) installation — no Docker
+# Proton Drive Secure Sync
 
-Inside an Ubuntu LXC container running systemd, download and **review** the installer:
+Interfaccia web sperimentale per consultare Proton Drive tramite Rclone, trasferire file manualmente e programmare copie unidirezionali **senza cancellazioni automatiche**.
+
+> **Attenzione:** progetto non ufficiale Proton, non sottoposto ad audit e non ancora collaudato end-to-end su un account Proton Drive reale. Prima prova con file sacrificabili e conserva sempre un backup indipendente. Non esporre la porta 8080 direttamente a Internet.
+
+## Installazione su Ubuntu LXC in Proxmox (consigliata)
+
+Questa installazione funziona **dentro un container Ubuntu LXC già esistente**, senza Docker. Richiede systemd, accesso root nel container, rete funzionante e una versione di Rclone compatibile con il backend Proton Drive.
+
+### 1. Apri la console del container
+
+Dalla GUI di Proxmox: seleziona il container Ubuntu → **Console**. In alternativa, sul nodo Proxmox:
 
 ```bash
-apt update && apt install -y git
-git clone https://github.com/andreafar1/proton-drive-secure-sync.git /tmp/pdss-installer
-less /tmp/pdss-installer/install-lxc.sh
-bash /tmp/pdss-installer/install-lxc.sh
+pct enter ID_CONTAINER
 ```
 
-The script installs Python/Rclone, checks out the project in `/opt/proton-drive-secure-sync`, creates a `pdss` service user, Python virtual environment, two systemd services, a generated web password and session secret. It **does not start the services** until you configure Rclone. Save the printed password; it is only shown once.
+I comandi successivi si eseguono **dentro il container, come root**.
+
+### 2. Scarica il progetto e installalo
 
 ```bash
-sudo -u pdss env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone config
-sudo -u pdss env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone lsd proton:
+apt update
+apt install -y git
+git clone https://github.com/andreafar1/proton-drive-secure-sync.git /tmp/pdss-installer
+cd /tmp/pdss-installer
+less install-lxc.sh
+bash install-lxc.sh
+```
+
+Lo script:
+- installa Python, ambiente virtuale, dipendenze web e Rclone;
+- scarica il progetto in `/opt/proton-drive-secure-sync`;
+- crea l'utente non privilegiato `pdss`;
+- prepara `/var/lib/pdss/data` e `/srv/pdss-sync`;
+- genera una password web e una chiave di sessione;
+- crea e **abilita all'avvio** i servizi `pdss-web` e `pdss-scheduler`.
+
+**Salva subito la password mostrata a video:** l'installer la visualizza una sola volta. I servizi non vengono avviati prima della configurazione di Rclone.
+
+### 3. Configura Rclone per Proton Drive
+
+Controlla innanzitutto la versione e la disponibilità del backend:
+
+```bash
+rclone version
+rclone config providers | grep -i proton
+```
+
+Se `protondrive` non è disponibile, aggiorna Rclone da una fonte ufficiale verificata prima di proseguire. Il backend Proton Drive può avere limitazioni e comportamenti sperimentali.
+
+Configura il remoto **con il nome `proton`** (che nell'app appare come `proton:`):
+
+```bash
+runuser -u pdss -- env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone config
+```
+
+Verifica il collegamento:
+
+```bash
+runuser -u pdss -- env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone lsd proton:
+```
+
+Se non funziona, **non abilitare ancora le attività programmate**. Il file `/etc/proton-drive-secure-sync/rclone.conf` contiene credenziali sensibili: non pubblicarlo né inviarlo ad altri.
+
+### 4. Avvia i servizi automaticamente
+
+```bash
 systemctl start pdss-web pdss-scheduler
 systemctl status pdss-web pdss-scheduler --no-pager
+systemctl is-enabled pdss-web pdss-scheduler
+```
+
+Per consultare eventuali errori:
+
+```bash
+journalctl -u pdss-web -u pdss-scheduler -n 80 --no-pager
+```
+
+I servizi sono abilitati al riavvio automatico del container.
+
+### 5. Accedi alla pagina dall'indirizzo IP
+
+Visualizza l'IP del container:
+
+```bash
 hostname -I
 ```
 
-Access `http://CONTAINER_IP:8080` from the same LAN. The scheduler's local sync root is `/srv/pdss-sync` in the LXC; create subdirectories there with `pdss` ownership before adding jobs in the UI. To expose host files, use a Proxmox LXC bind mount and carefully map UID/GID permissions; do not turn the container privileged just to fix permissions.
+Da un dispositivo nella stessa LAN, apri:
 
-To update:
+```text
+http://IP_DEL_CONTAINER:8080
+```
+
+Esempio puramente illustrativo: `http://192.168.1.150:8080`. Accedi con la password generata al punto 2. Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
+
+**Sicurezza:** HTTP non cifra le credenziali. Usa soltanto una LAN fidata o una VPN; per accesso remoto predisponi un reverse proxy HTTPS con controllo degli accessi. Non fare port forwarding pubblico della porta 8080.
+
+### 6. Scegli le cartelle da copiare e la frequenza
+
+La cartella locale esposta all'applicazione è:
+
+```text
+/srv/pdss-sync
+```
+
+Crea, ad esempio:
+
+```bash
+install -d -o pdss -g pdss /srv/pdss-sync/Documenti
+```
+
+Nella pagina web apri **Sincronizzazione** → crea una nuova attività. Esempio:
+
+| Campo | Valore |
+| --- | --- |
+| Nome | Backup Documenti |
+| Direzione | Locale → Proton Drive |
+| Cartella locale | `Documenti` |
+| Cartella remota | `Backup/Documenti` |
+| Frequenza | Ogni 60 minuti |
+
+Le attività nascono **disattivate**. Puoi premere **Avvia ora** per una copia manuale, oppure **Attiva** per programmare le esecuzioni. Le opzioni disponibili sono: manuale, ogni 15 o 30 minuti, ogni 1, 6, 12 o 24 ore.
+
+Il pianificatore gira come servizio systemd anche quando chiudi il browser. Conserva attività, ultimo esito e prossima esecuzione nel database SQLite `/var/lib/pdss/data/schedules.sqlite3`.
+
+**Limite importante:** usa `rclone copy --ignore-existing`. Copia file nuovi, ma **non aggiorna** quelli già presenti nella destinazione, anche se modificati. Non è una sincronizzazione bidirezionale; non cancella file, non risolve conflitti e non garantisce atomicità in presenza di scritture concorrenti.
+
+Per esporre una cartella del nodo Proxmox al container LXC, usa un bind mount configurato su Proxmox e verifica attentamente i permessi UID/GID; non rendere il container privilegiato solo per aggirare i permessi.
+
+### Aggiornare l'applicazione da GitHub
+
+Dentro il container, come root:
+
 ```bash
 cd /opt/proton-drive-secure-sync
 git pull --ff-only
@@ -29,102 +141,57 @@ git pull --ff-only
 systemctl restart pdss-web pdss-scheduler
 ```
 
-**Important:** HTTP is unencrypted; restrict port 8080 to a trusted LAN or VPN and use HTTPS via reverse proxy for remote access. The Rclone Proton Drive backend is beta; verify the installed Rclone supports `protondrive` and test with disposable data. This installer has not been integration-tested inside a live Proxmox LXC.
+### Comandi utili
 
-# Proton Drive Secure Sync — Web container v0.5 (experimental)
+```bash
+systemctl status pdss-web pdss-scheduler --no-pager
+journalctl -u pdss-web -f
+journalctl -u pdss-scheduler -f
+systemctl restart pdss-web pdss-scheduler
+```
 
-Browser-based manual Rclone file browser and upload/download frontend for Docker. **Not an official Proton app, not audited, and not automatic synchronization.** The previous GTK3 desktop client is still available as `python3 run.py`.
+## Installazione alternativa con Docker Compose
 
-## Docker installation (Ubuntu or other Linux host)
-
-Install Docker Engine and the Docker Compose plugin on the host. Then:
+Se invece usi Docker (non necessario su Proxmox LXC), sono disponibili `Dockerfile` e `compose.yaml`.
 
 ```bash
 git clone https://github.com/andreafar1/proton-drive-secure-sync.git
 cd proton-drive-secure-sync
 cp .env.example .env
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+mkdir -p config sync
 ```
 
-Set `PDSS_PASSWORD` in `.env` to a long, unique password and `PDSS_SESSION_SECRET` to a **different** random value from the command above (32+ characters). Never commit `.env`.
-
-Configure a compatible Rclone installation on the **host** using `rclone config` and a test Proton Drive account, then copy its config to `./config/rclone.conf`. Keep this file private and readable by UID 10001 inside the container, e.g.:
+Imposta password e segreto distinti in `.env`, configura un remoto Rclone compatibile e prepara `config/rclone.conf` con permessi che consentano la lettura all'UID 10001 del container. Poi:
 
 ```bash
-mkdir -p config
-sudo install -m 0444 ~/.config/rclone/rclone.conf ./config/rclone.conf
-mkdir -p sync\n# Ensure the mounted folder is readable/writable by container UID 10001:\nsudo chown -R 10001:10001 sync\ndocker compose up -d --build
-docker compose logs --tail=60
-```
-
-**Important:** the Docker image installs the Debian packaged Rclone. Confirm `docker compose exec proton-drive-secure-sync rclone version` and `rclone listremotes` show a version supporting the configured Proton Drive backend. If not, install a compatible trusted Rclone release in a custom image before relying on it. Do not assume every Rclone version supports Proton Drive.
-
-Access from a browser on the same LAN:
-
-```
-http://SERVER_IP:8080
-```
-
-Replace `SERVER_IP` with the Docker host's actual IP address. Allow TCP 8080 in the host firewall **only from your trusted LAN/VPN**. The Docker Compose file binds port 8080 to all host interfaces. **HTTP is unencrypted**; for access across the internet, do not expose 8080 directly. Put the service behind an HTTPS reverse proxy with access controls or a VPN; set `PDSS_HTTPS=1` when HTTPS is correctly configured. Never port-forward 8080 to the public internet.
-
-## Scheduled one-way copy jobs (v0.5)
-
-The **Sincronizzazione** tab lets you create jobs with a name, direction, local folder relative to `/sync`, remote folder relative to the Rclone remote, and frequency: manual, 15 min, 30 min, 1 hour, 6 hours, 12 hours, or 24 hours.
-
-Jobs start **disabled**. Use **Avvia ora** for a one-time copy, or **Attiva** to schedule recurring runs. A dedicated `scheduler` container handles jobs even after the browser closes. Job configuration, last run, last status and next run are stored in `/data/schedules.sqlite3` on the named Docker volume.
-
-**Local folders must already exist** within the host folder mounted to `/sync`. The default is `./sync` next to `compose.yaml`. To sync a different host directory, add `PDSS_LOCAL_DIR=/absolute/path/to/folder` to `.env`, ensure UID 10001 can read it and (for downloads) write to it, then recreate the containers. Inside the UI, specify a relative path such as `Documents` (or `.` for the mounted root).
-
-Examples:
-- `Locale → Proton Drive`, local `Documents`, remote `Backup/Documents`, every 60 minutes: copy new files from `/sync/Documents` into the remote subfolder.
-- `Proton Drive → Locale`, local `CloudCopy`, remote `Documents`, every 24 hours: copy new remote files into `/sync/CloudCopy`.
-
-**This is not full sync:** the scheduler uses `rclone copy --ignore-existing`, which skips destination files already present even if their contents changed. It does not delete destination files. The operation is not transactional, and remote concurrent writers or incomplete transfers still require independent testing. There is no bidirectional mode or automatic conflict resolution.
-
-Check status:
-```bash
+sudo chown -R 10001:10001 sync
+docker compose up -d --build
 docker compose ps
-docker compose logs --tail=50 scheduler
 ```
 
-## Features
+L'interfaccia sarà raggiungibile su `http://IP_SERVER:8080` **solo dalla rete fidata**. Il container scheduler esegue le attività programmate; la directory locale è montata in `/sync`. Per cambiare la directory host, imposta `PDSS_LOCAL_DIR` in `.env`.
 
-- Responsive purple web UI inspired by the desktop mockup
-- Password-protected session (HTTP-only, SameSite Strict cookie)
-- List and browse remote folders, sizes and modification times
-- Manual upload to **remote root** (100 MB default maximum), manual download from any browsed folder
-- Confirmation dialogs; session-only transfer activity and operation log in the browser
-- Server-side remote path validation; local staging, no-clobber publication for downloads
-- No delete, overwrite command, or bidirectional synchronization; scheduled one-way non-destructive copy jobs are opt-in
-- Rclone config mounted read-only; container runs as non-root, drops Linux capabilities, read-only root filesystem
+## Funzionalità e limitazioni
 
-## Limitations and safety
+- Interfaccia web responsive con esplorazione delle cartelle remote.
+- Upload e download manuali con conferma; upload manuale nella radice remota.
+- Pianificazione di copie unidirezionali con frequenze configurabili.
+- Nessuna cancellazione automatica, nessuna sovrascrittura intenzionale.
+- Accesso con password condivisa; nessun sistema multiutente o rate limiting applicativo.
+- Registro browser temporaneo; per le attività pianificate sono memorizzati solo l'ultimo stato e i tempi.
+- Nessuna barra di progresso reale o cancellazione dei trasferimenti.
+- Verifica SHA-256 locale non equivalente a verifica crittografica del contenuto remoto.
+- Test unitari con Rclone simulato, non una prova di sicurezza o affidabilità end-to-end.
 
-- **Do not use for important files without independent backups.** No real Proton Drive end-to-end integration or security audit has been performed.
-- Upload collision preflight and Rclone `--immutable` are not atomic protection against concurrent remote writes.
-- SHA-256 checks the local staged file, not the authenticity of the remote file.
-- Uploads/downloads are synchronous per HTTP request and may time out on network interruptions. No cancellation or true progress bar yet.
-- The browser operation log is not persistent. Scheduled jobs retain only their last result and timestamps; the Transfer tab is a browser session feed, not a transfer progress queue.\n- The scheduler runs one job at a time and may take up to an hour per job. It does not automatically resolve changed files or conflicts.
-- Authentication is a single shared password, not a multi-user identity system. There is no rate limiter; restrict access at the reverse proxy/firewall.
-- Secrets and Rclone configuration remain on the host. File permissions on the mounted Rclone config must allow container UID 10001 to read it; the sample `0444` is a compatibility choice, not ideal for a shared host. Prefer an ACL or a dedicated service-owned copy with restricted permissions.
-- The web application has not yet been exercised inside a live Docker container in this development environment. Test with disposable data first.
-
-## Desktop mode
+## Test e modalità desktop precedente
 
 ```bash
-sudo apt install python3 python3-gi gir1.2-gtk-3.0 rclone
-python3 -m unittest discover -s tests -v
-python3 run.py
+cd /opt/proton-drive-secure-sync
+/opt/proton-drive-secure-sync/.venv/bin/python -m unittest discover -s tests -v
 ```
 
-## Local test suite
+La precedente GUI GTK3 rimane nel repository (`run.py`), ma per Ubuntu LXC senza desktop si raccomanda l'interfaccia web.
 
-```bash
-python3 -m unittest discover -s tests -v
-```
+## Licenza e contributi
 
-Tests mock Rclone and do not validate a real Proton backend. The web application requires the packages in `requirements-web.txt`.
-
-## Security note
-
-The project is experimental. Do not publish your `.env`, `config/rclone.conf`, passwords, Rclone access tokens, or screenshots containing secrets. Treat your Rclone config as sensitive.
+Prima di distribuire o riutilizzare il progetto, verificare la presenza di una licenza esplicita nel repository. Segnalazioni di bug e test con dati non sensibili sono benvenuti.
