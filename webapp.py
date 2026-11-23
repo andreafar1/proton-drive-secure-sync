@@ -8,6 +8,7 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 from werkzeug.exceptions import RequestEntityTooLarge
 from secure_sync.core import RcloneClient, SyncError, validate_path
 from scheduler import list_jobs, add_job, update_job, toggle_job, request_run, delete_job
+from cloud_setup import configured, save_proton
 
 app = Flask(__name__, template_folder='web/templates', static_folder='web/static')
 secret = os.environ.get('PDSS_SESSION_SECRET', '')
@@ -71,6 +72,24 @@ def logout():
     require_csrf()
     session.clear()
     return jsonify(ok=True)
+
+@app.get('/api/cloud')
+def cloud_status():
+    require_auth()
+    return jsonify(configured=configured(), remote=REMOTE)
+
+@app.post('/api/cloud')
+def cloud_connect():
+    require_auth()
+    require_csrf()
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(error='Richiesta non valida'), 400
+    try:
+        save_proton(data)
+        return jsonify(ok=True, configured=True)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
 
 @app.get('/api/files')
 def files():
