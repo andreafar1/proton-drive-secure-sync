@@ -39,16 +39,18 @@ Apri quindi `http://IP_DEL_CONTAINER:8080` (o la porta scelta), accedi con la pa
 
 ### Gestione account Proton Drive dalla GUI
 
+**Notifiche ripetute di nuovo accesso Proton:** nelle versioni precedenti la GUI eseguiva controlli Rclone automatici aprendo Impostazioni e caricando i file all'avvio. Ora queste richieste automatiche sono state rimosse. Le operazioni esplicite di verifica, caricamento, download o sincronizzazione continuano a contattare Proton e potrebbero comunque generare notifiche; non è garantito che Rclone riutilizzi sempre la sessione.
+
 In **Impostazioni → Collega Proton Drive** puoi:
 
 - **Vedere lo stato**: `Non collegato`, `Connesso`, `Configurato, ma non raggiungibile` oppure timeout.
-- Premere **Verifica connessione** per riprovare il controllo di accessibilità tramite Rclone (fino a 25 secondi).
+- Premere **Verifica connessione** solo quando necessario: il controllo contatta Proton Drive e può provocare una notifica di nuovo accesso (fino a 25 secondi). La visualizzazione dello stato in Impostazioni legge solo la configurazione locale e non contatta Proton.
 - **Sostituire l'account** inserendo nuove credenziali e premendo **Collega o sostituisci account**. La vecchia configurazione viene sostituita solo dopo una verifica riuscita.
 - **Rimuovere l'account** con conferma: viene eliminata esclusivamente la sezione del remoto Proton nel file Rclone locale. I file su Proton Drive non vengono cancellati.
 
 **Sicurezza durante il cambio account:** tutte le attività programmate vengono disattivate prima della sostituzione o rimozione. Non è consentito cambiare account mentre un'attività risulta in esecuzione. Dopo aver collegato il nuovo account, controlla le cartelle remote e riattiva manualmente solo le attività appropriate. Se la verifica del nuovo account fallisce, la configurazione precedente rimane, ma le attività restano disattivate.
 
-Lo stato `Connesso` indica che il controllo Rclone è riuscito in quel momento, non garantisce disponibilità continua. La rimozione locale non revoca sessioni o dispositivi dall'account Proton.
+Lo stato `Configurato (non verificato)` indica soltanto che il remoto è presente nel file locale. Lo stato `Connesso` indica che il controllo Rclone è riuscito in quel momento, non garantisce disponibilità continua. La rimozione locale non revoca sessioni o dispositivi dall'account Proton.
 
 ### 3. Controlla i servizi
 
