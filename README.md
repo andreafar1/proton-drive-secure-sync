@@ -6,7 +6,7 @@ Interfaccia web sperimentale per consultare Proton Drive tramite Rclone, trasfer
 
 ## Installazione su Ubuntu LXC in Proxmox (consigliata)
 
-**Installazione rapida:** bastano `git clone`, `cd` e `bash install-lxc.sh`: durante la procedura scegli porta, password, cartella e connessione Proton Drive. Non è necessario Docker.
+**Installazione rapida:** bastano `git clone`, `cd` e `bash install-lxc.sh`: durante la procedura scegli porta, password web e cartella; colleghi Proton Drive successivamente dalla GUI. Non è necessario Docker.
 
 Questa installazione funziona **dentro un container Ubuntu LXC già esistente**, senza Docker. Richiede systemd, accesso root nel container, rete funzionante e una versione di Rclone compatibile con il backend Proton Drive.
 
@@ -31,11 +31,11 @@ cd proton-drive-secure-sync
 bash install-lxc.sh
 ```
 
-L'installer pone direttamente le domande necessarie: **porta web** (predefinita 8080), **nome del remoto Rclone** (predefinito `proton`), **cartella locale** (predefinita `/srv/pdss-sync`) e **password di accesso web** (almeno 16 caratteri). Se accetti, avvia anche la procedura guidata `rclone config` per inserire le credenziali Proton Drive e l'eventuale 2FA; non devi creare manualmente il file di configurazione.
+L'installer chiede **porta web** (8080), **nome del remoto Rclone** (`proton`), **cartella locale** (`/srv/pdss-sync`) e **password web** (almeno 16 caratteri). Scarica e aggiorna il progetto in `/opt/proton-drive-secure-sync`, prepara Python e abilita e avvia i servizi systemd. **Non devi inserire le credenziali Proton durante l'installazione.**
 
-L'installer scarica e aggiorna il progetto in `/opt/proton-drive-secure-sync`, prepara Python, i due servizi systemd e le cartelle. Se il collegamento Rclone funziona, avvia automaticamente web e scheduler. Le impostazioni già esistenti e la password web vengono conservate in caso di reinstallazione.
+Apri quindi `http://IP_DEL_CONTAINER:8080` (o la porta scelta), accedi con la password web e vai in **Impostazioni → Collega Proton Drive**. Inserisci nome utente/email Proton, password Proton e, se richiesto, il codice 2FA. Premi **Collega e verifica account**. L'app prepara una configurazione Rclone temporanea e la salva solo dopo un test di connessione riuscito. Il browser non conserva la password nel modulo dopo la richiesta.
 
-**Attenzione:** Rclone deve supportare il backend `protondrive`. Se la versione Ubuntu è troppo vecchia, installa una versione compatibile dalla fonte ufficiale prima di ripetere l'installazione. Le credenziali Proton sono richieste dalla procedura guidata Rclone, non dal nostro script. Il backend Proton Drive è ancora beta.
+**Limiti:** serve una versione di Rclone compatibile con il backend `protondrive`, che è sperimentale. Alcuni account o flussi di autenticazione potrebbero richiedere una configurazione Rclone interattiva da terminale. La password Proton viene protetta con l'oscuramento di Rclone nel file locale: **l'oscuramento non è crittografia forte**; proteggi il container, il file di configurazione e i backup. Non utilizzare questa pagina su HTTP attraverso reti non fidate: usa HTTPS o una VPN.
 
 ### 3. Controlla i servizi
 
@@ -44,7 +44,7 @@ systemctl status pdss-web pdss-scheduler --no-pager
 hostname -I
 ```
 
-Se la connessione Rclone non è riuscita, completa la configurazione (qui si assume il remoto predefinito `proton`):
+Se il collegamento dalla GUI non funziona, puoi utilizzare la configurazione Rclone da terminale (qui si assume il remoto predefinito `proton`):
 
 ```bash
 runuser -u pdss -- env RCLONE_CONFIG=/etc/proton-drive-secure-sync/rclone.conf rclone config
@@ -72,7 +72,7 @@ Da un dispositivo nella stessa LAN, apri:
 http://IP_DEL_CONTAINER:8080
 ```
 
-Esempio puramente illustrativo: `http://192.168.1.150:8080` (o la porta scelta durante l’installazione). Accedi con la password scelta durante l'installazione (punto 2). Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
+Esempio puramente illustrativo: `http://192.168.1.150:8080` (o la porta scelta durante l’installazione). Accedi con la password scelta durante l'installazione (punto 2), poi apri **Impostazioni** per collegare il cloud. Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
 
 **Sicurezza:** HTTP non cifra le credenziali. Usa soltanto una LAN fidata o una VPN; per accesso remoto predisponi un reverse proxy HTTPS con controllo degli accessi. Non fare port forwarding pubblico della porta 8080.
 
