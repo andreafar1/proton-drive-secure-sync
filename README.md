@@ -37,6 +37,19 @@ Apri quindi `http://IP_DEL_CONTAINER:8080` (o la porta scelta), accedi con la pa
 
 **Limiti:** serve una versione di Rclone compatibile con il backend `protondrive`, che è sperimentale. Alcuni account o flussi di autenticazione potrebbero richiedere una configurazione Rclone interattiva da terminale. La password Proton viene protetta con l'oscuramento di Rclone nel file locale: **l'oscuramento non è crittografia forte**; proteggi il container, il file di configurazione e i backup. Non utilizzare questa pagina su HTTP attraverso reti non fidate: usa HTTPS o una VPN.
 
+### Gestione account Proton Drive dalla GUI
+
+In **Impostazioni → Collega Proton Drive** puoi:
+
+- **Vedere lo stato**: `Non collegato`, `Connesso`, `Configurato, ma non raggiungibile` oppure timeout.
+- Premere **Verifica connessione** per riprovare il controllo di accessibilità tramite Rclone (fino a 25 secondi).
+- **Sostituire l'account** inserendo nuove credenziali e premendo **Collega o sostituisci account**. La vecchia configurazione viene sostituita solo dopo una verifica riuscita.
+- **Rimuovere l'account** con conferma: viene eliminata esclusivamente la sezione del remoto Proton nel file Rclone locale. I file su Proton Drive non vengono cancellati.
+
+**Sicurezza durante il cambio account:** tutte le attività programmate vengono disattivate prima della sostituzione o rimozione. Non è consentito cambiare account mentre un'attività risulta in esecuzione. Dopo aver collegato il nuovo account, controlla le cartelle remote e riattiva manualmente solo le attività appropriate. Se la verifica del nuovo account fallisce, la configurazione precedente rimane, ma le attività restano disattivate.
+
+Lo stato `Connesso` indica che il controllo Rclone è riuscito in quel momento, non garantisce disponibilità continua. La rimozione locale non revoca sessioni o dispositivi dall'account Proton.
+
 ### 3. Controlla i servizi
 
 ```bash
