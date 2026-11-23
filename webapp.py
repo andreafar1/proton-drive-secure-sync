@@ -7,8 +7,8 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 from secure_sync.core import RcloneClient, SyncError, validate_path
-from scheduler import list_jobs, add_job, update_job, toggle_job, request_run, delete_job
-from cloud_setup import configured, save_proton
+from scheduler import list_jobs, add_job, update_job, toggle_job, request_run, delete_job, pause_jobs_for_account_change
+from cloud_setup import configured, save_proton, connection_status, remove_proton
 
 app = Flask(__name__, template_folder='web/templates', static_folder='web/static')
 secret = os.environ.get('PDSS_SESSION_SECRET', '')
@@ -76,7 +76,7 @@ def logout():
 @app.get('/api/cloud')
 def cloud_status():
     require_auth()
-    return jsonify(configured=configured(), remote=REMOTE)
+    return jsonify(**connection_status(), remote=REMOTE)
 
 @app.post('/api/cloud')
 def cloud_connect():
@@ -86,10 +86,22 @@ def cloud_connect():
     if not isinstance(data, dict):
         return jsonify(error='Richiesta non valida'), 400
     try:
+        pause_jobs_for_account_change()
         save_proton(data)
         return jsonify(ok=True, configured=True)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
+
+@app.delete('/api/cloud')
+def cloud_disconnect():
+    require_auth()
+    require_csrf()
+    try:
+        pause_jobs_for_account_change()
+        removed = remove_proton()
+        return jsonify(ok=True, removed=removed, configured=False, connected=False)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 409
 
 @app.get('/api/files')
 def files():
