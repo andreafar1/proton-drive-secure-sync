@@ -83,3 +83,46 @@ def save_proton(data):
     finally:
         if os.path.exists(candidate):
             os.unlink(candidate)
+
+def connection_status():
+    """Check configured remote without returning account secrets or Rclone stderr."""
+    if not configured():
+        return {"configured": False, "connected": False, "status": "disconnected"}
+    try:
+        result = subprocess.run(
+            ["rclone", "lsd", REMOTE + ":"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=25, check=False,
+            env={**os.environ, "RCLONE_ASK_PASSWORD": "false"})
+    except subprocess.TimeoutExpired:
+        return {"configured": True, "connected": False, "status": "timeout"}
+    except OSError:
+        return {"configured": True, "connected": False, "status": "error"}
+    return {"configured": True, "connected": result.returncode == 0,
+            "status": "connected" if result.returncode == 0 else "error"}
+
+def remove_proton():
+    """Remove only the active Proton remote, preserving unrelated remotes."""
+    if not CONFIG.is_file() or CONFIG.is_symlink():
+        raise ValueError("Configurazione Rclone non disponibile")
+    parser = configparser.RawConfigParser(interpolation=None)
+    try:
+        with CONFIG.open(encoding="utf-8") as stream:
+            parser.read_file(stream)
+    except (OSError, configparser.Error) as exc:
+        raise ValueError("Impossibile leggere la configurazione Rclone") from exc
+    if not parser.has_section(REMOTE):
+        return False
+    if parser.get(REMOTE, "type", fallback="") != "protondrive":
+        raise ValueError("Il remoto attivo non è Proton Drive")
+    parser.remove_section(REMOTE)
+    fd, candidate = tempfile.mkstemp(prefix=".pdss-rclone-", dir=str(CONFIG.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            parser.write(stream)
+        os.chmod(candidate, 0o600)
+        os.replace(candidate, CONFIG)
+    finally:
+        if os.path.exists(candidate):
+            os.unlink(candidate)
+    return True
