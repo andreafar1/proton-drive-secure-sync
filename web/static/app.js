@@ -27,8 +27,10 @@ document.querySelector('[data-page="sync"]').addEventListener('click',refreshJob
 async function cloudStatus(){
   try{
     const data=await (await api('/api/cloud')).json();
-    $('cloud-status').textContent=data.configured?'Configurato':'Da collegare';
-  }catch(e){$('cloud-status').textContent='Verifica non riuscita';}
+    $('cloud-status').textContent=data.connected?'Connesso':data.configured?'Configurato, ma non raggiungibile':'Non collegato';
+    $('cloud-status-detail').textContent=data.status==='timeout'?'Verifica scaduta: il cloud non risponde.':data.status==='error'?'Rclone non riesce a raggiungere il cloud.':data.connected?'Connessione Proton Drive verificata.':'Nessun account configurato.';
+    $('cloud-remove').disabled=!data.configured;
+  }catch(e){$('cloud-status').textContent='Verifica non riuscita';$('cloud-status-detail').textContent=e.message;}
 }
 document.querySelector('[data-page="settings"]').addEventListener('click',cloudStatus);
 $('cloud-form').addEventListener('submit',async e=>{
@@ -49,5 +51,26 @@ $('cloud-form').addEventListener('submit',async e=>{
     $('cloud-password').value='';
     $('cloud-2fa').value='';
     button.disabled=false;
+  }
+});
+
+$('cloud-check').addEventListener('click',async()=>{
+  $('cloud-status').textContent='Verifica in corso…';
+  await cloudStatus();
+});
+$('cloud-remove').addEventListener('click',async()=>{
+  if(!confirm('Rimuovere l’account Proton Drive da questa app? I file nel cloud non verranno eliminati. Tutte le sincronizzazioni programmate saranno disattivate.'))return;
+  const button=$('cloud-remove');
+  button.disabled=true;
+  try{
+    await api('/api/cloud',{method:'DELETE'});
+    $('cloud-form').reset();
+    state.files=[];state.folder='';state.selected=null;show();
+    $('cloud-message').textContent='Account scollegato. Nessun file remoto eliminato. Le attività programmate sono state disattivate.';
+    await cloudStatus();
+    await refreshJobs();
+  }catch(e){
+    $('cloud-message').textContent='Errore: '+e.message;
+    await cloudStatus();
   }
 });
