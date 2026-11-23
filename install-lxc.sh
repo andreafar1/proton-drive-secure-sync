@@ -29,7 +29,8 @@ fi
 python3 -m venv "$APP/.venv"
 "$APP/.venv/bin/pip" install -r "$APP/requirements-web.txt"
 install -d -o pdss -g pdss -m 0750 /var/lib/pdss/data
-install -d -o root -g pdss -m 0750 "$CONF"
+install -d -o pdss -g pdss -m 0700 "$CONF"
+chown pdss:pdss "$CONF"
 if [[ ! -e "$SYNC" ]]; then
   install -d -o pdss -g pdss -m 0750 "$SYNC"
 else
@@ -89,7 +90,7 @@ UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/pdss/data
+ReadWritePaths=/var/lib/pdss/data /etc/proton-drive-secure-sync
 PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
@@ -118,17 +119,9 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
 systemctl enable pdss-web pdss-scheduler
-echo "Configura Rclone con un remoto chiamato $REMOTE, tipo protondrive."
-read -r -p "Aprire la configurazione Rclone ora? [S/n]: " ANSWER
-if [[ $ANSWER != n && $ANSWER != N ]]; then
-  runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone config
-fi
-if runuser -u pdss -- env RCLONE_CONFIG="$CONF/rclone.conf" rclone lsd "$REMOTE:" >/dev/null; then
-  systemctl restart pdss-web pdss-scheduler
-  echo "Installazione completata! Apri http://IP_DEL_CONTAINER:$PORT"
-  echo "IP del container: $(hostname -I)"
-else
-  echo "Connessione remota non verificata. Configura Rclone e poi esegui:"
-  echo "systemctl start pdss-web pdss-scheduler"
-fi
-echo "Non esporre la porta web HTTP a Internet: usa LAN fidata o VPN/HTTPS."
+echo "Il cloud si collega dalla GUI: Impostazioni -> Collega Proton Drive."
+systemctl restart pdss-web pdss-scheduler
+echo "Installazione completata! Apri http://IP_DEL_CONTAINER:$PORT"
+echo "IP del container: $(hostname -I)"
+echo "Accedi e collega il cloud dalla sezione Impostazioni."
+echo "Non esporre HTTP a Internet: usa LAN fidata o VPN/HTTPS."
