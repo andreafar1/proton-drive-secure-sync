@@ -78,6 +78,12 @@ def cloud_status():
     require_auth()
     return jsonify(**connection_status(), remote=REMOTE)
 
+@app.post('/api/cloud/check')
+def cloud_check():
+    require_auth()
+    require_csrf()
+    return jsonify(**connection_status(check=True), remote=REMOTE)
+
 @app.post('/api/cloud')
 def cloud_connect():
     require_auth()
