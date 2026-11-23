@@ -84,10 +84,15 @@ def save_proton(data):
         if os.path.exists(candidate):
             os.unlink(candidate)
 
-def connection_status():
-    """Check configured remote without returning account secrets or Rclone stderr."""
+def connection_status(check=False):
+    """Default status reads local configuration only; no network login.
+
+    Explicit checks may authenticate with Proton, so never run automatically.
+    """
     if not configured():
         return {"configured": False, "connected": False, "status": "disconnected"}
+    if not check:
+        return {"configured": True, "connected": None, "status": "configured"}
     try:
         result = subprocess.run(
             ["rclone", "lsd", REMOTE + ":"],
