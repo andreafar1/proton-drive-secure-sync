@@ -16,7 +16,7 @@ $('download').addEventListener('click',async()=>{const file=state.files.find(f=>
 $('logout').addEventListener('click',async()=>{try{await api('/logout',{method:'POST'});location.reload();}catch(e){status(e.message);}});
 $('clear-log').addEventListener('click',()=>{state.events=[];$('events').textContent='';$('transfers-list').replaceChildren();});
 status('Pronto · trasferimenti manuali');
-refresh();
+// Nessun caricamento automatico del cloud.
 
 function displayTime(t){return t?new Date(t*1000).toLocaleString('it-IT'):'—';}
 async function refreshJobs(){try{const data=await (await api('/api/schedules')).json();const list=$('job-list');list.replaceChildren();if(!data.jobs.length){list.textContent='Nessuna attività configurata';return;}for(const j of data.jobs){const card=document.createElement('div');card.className='job-card';const title=document.createElement('h3');title.textContent=j.name;const details=document.createElement('p');details.textContent=(j.direction==='upload'?'Locale → Proton':'Proton → Locale')+' · /sync/'+j.local_path+' ⇄ '+(j.remote_path||'/')+' · '+(j.interval_minutes?('ogni '+j.interval_minutes+' minuti'):'manuale');const state=document.createElement('p');state.textContent=(j.running?'In esecuzione · ':j.enabled?'Attiva · ':'Disattivata · ')+'Ultima: '+displayTime(j.last_run)+' · '+j.last_status+' · Prossima: '+displayTime(j.next_run);const actions=document.createElement('div');actions.className='job-actions';function action(label,method,path,body,question){const b=document.createElement('button');b.textContent=label;b.addEventListener('click',async()=>{if(question&&!confirm(question))return;try{await api(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});status(label+': '+j.name);await refreshJobs();}catch(e){status('Errore: '+e.message);}});actions.append(b);}action('Avvia ora','POST','/api/schedules/'+j.id+'/run');if(j.interval_minutes){action(j.enabled?'Disattiva':'Attiva','POST','/api/schedules/'+j.id+'/enable',{enabled:!j.enabled});}action('Elimina attività','DELETE','/api/schedules/'+j.id,null,'Eliminare solo la configurazione '+j.name+'? Nessun file sarà cancellato.');card.append(title,details,state,actions);list.append(card);}}catch(e){status('Errore attività: '+e.message);}}
@@ -27,8 +27,8 @@ document.querySelector('[data-page="sync"]').addEventListener('click',refreshJob
 async function cloudStatus(){
   try{
     const data=await (await api('/api/cloud')).json();
-    $('cloud-status').textContent=data.connected?'Connesso':data.configured?'Configurato, ma non raggiungibile':'Non collegato';
-    $('cloud-status-detail').textContent=data.status==='timeout'?'Verifica scaduta: il cloud non risponde.':data.status==='error'?'Rclone non riesce a raggiungere il cloud.':data.connected?'Connessione Proton Drive verificata.':'Nessun account configurato.';
+    $('cloud-status').textContent=data.connected?'Connesso':data.status==='configured'?'Configurato (non verificato)':data.configured?'Non raggiungibile':'Non collegato';
+    $('cloud-status-detail').textContent=data.status==='timeout'?'Verifica scaduta: il cloud non risponde.':data.status==='error'?'Rclone non riesce a raggiungere il cloud.':data.connected?'Connessione Proton Drive verificata.':data.status==='configured'?'La verifica manuale potrebbe causare un nuovo accesso Proton.':'Nessun account configurato.';
     $('cloud-remove').disabled=!data.configured;
   }catch(e){$('cloud-status').textContent='Verifica non riuscita';$('cloud-status-detail').textContent=e.message;}
 }
@@ -56,7 +56,11 @@ $('cloud-form').addEventListener('submit',async e=>{
 
 $('cloud-check').addEventListener('click',async()=>{
   $('cloud-status').textContent='Verifica in corso…';
-  await cloudStatus();
+  if(!confirm('Questa verifica potrebbe generare una notifica di nuovo accesso Proton. Continuare?'))return;
+  try { const data=await (await api('/api/cloud/check',{method:'POST'})).json();
+    $('cloud-status').textContent=data.connected?'Connesso':'Connessione non riuscita';
+    $('cloud-status-detail').textContent=data.connected?'Verifica riuscita.':'Verifica fallita.';
+  } catch(e) { $('cloud-status-detail').textContent=e.message; }
 });
 $('cloud-remove').addEventListener('click',async()=>{
   if(!confirm('Rimuovere l’account Proton Drive da questa app? I file nel cloud non verranno eliminati. Tutte le sincronizzazioni programmate saranno disattivate.'))return;
