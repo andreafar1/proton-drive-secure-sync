@@ -23,3 +23,31 @@ async function refreshJobs(){try{const data=await (await api('/api/schedules')).
 $('schedule-form').addEventListener('submit',async e=>{e.preventDefault();const data={name:$('job-name').value.trim(),direction:$('job-direction').value,local_path:$('job-local').value.trim(),remote_path:$('job-remote').value.trim(),interval_minutes:Number($('job-interval').value)};if(!confirm('Creare questa attività? Sarà disattivata finché non la abiliti o avvii manualmente.'))return;try{await api('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});$('schedule-form').reset();status('Attività creata');await refreshJobs();}catch(err){status('Errore: '+err.message);}});
 $('refresh-jobs').addEventListener('click',refreshJobs);
 document.querySelector('[data-page="sync"]').addEventListener('click',refreshJobs);
+
+async function cloudStatus(){
+  try{
+    const data=await (await api('/api/cloud')).json();
+    $('cloud-status').textContent=data.configured?'Configurato':'Da collegare';
+  }catch(e){$('cloud-status').textContent='Verifica non riuscita';}
+}
+document.querySelector('[data-page="settings"]').addEventListener('click',cloudStatus);
+$('cloud-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const button=$('cloud-save');
+  button.disabled=true;
+  $('cloud-message').textContent='Verifica connessione Proton in corso…';
+  const data={username:$('cloud-user').value.trim(),password:$('cloud-password').value,two_factor:$('cloud-2fa').value.trim()};
+  try{
+    await api('/api/cloud',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    $('cloud-message').textContent='Account Proton Drive collegato e verificato.';
+    $('cloud-form').reset();
+    await cloudStatus();
+    await refresh();
+  }catch(err){$('cloud-message').textContent='Errore: '+err.message;}
+  finally{
+    data.password='';
+    $('cloud-password').value='';
+    $('cloud-2fa').value='';
+    button.disabled=false;
+  }
+});
