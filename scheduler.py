@@ -117,6 +117,14 @@ def delete_job(job_id):
         if row['running']: raise ValueError('Attività in esecuzione')
         db.execute('DELETE FROM jobs WHERE id=?', (job_id,))
 
+def pause_jobs_for_account_change():
+    """Prevent old scheduled jobs from running against another Proton account."""
+    with connect() as db:
+        if db.execute('SELECT COUNT(*) FROM jobs WHERE running=1').fetchone()[0]:
+            raise ValueError('Attendi che le sincronizzazioni in corso siano terminate')
+        db.execute("""UPDATE jobs SET enabled=0, next_run=NULL, run_requested=0,
+                      last_status='Disattivata: account Proton modificato'""")
+
 def run_job(row):
     try:
         local = local_path(row['local_path'])
