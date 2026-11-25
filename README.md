@@ -4,7 +4,7 @@
 
 Interfaccia web sperimentale per consultare Proton Drive tramite Rclone, trasferire file manualmente e programmare copie unidirezionali **senza cancellazioni automatiche**.
 
-> **Attenzione:** progetto non ufficiale Proton, non sottoposto ad audit e non completamente collaudato end-to-end; la compatibilità Raspberry Pi non è ancora verificata su hardware reale. Prima prova con file sacrificabili e conserva sempre un backup indipendente. Non esporre la porta 8080 direttamente a Internet.
+> **Attenzione:** progetto non ufficiale Proton, non sottoposto ad audit e non completamente collaudato end-to-end; la compatibilità Raspberry Pi non è ancora verificata su hardware reale. Prima prova con file sacrificabili e conserva sempre un backup indipendente. Non esporre la porta 8089 direttamente a Internet.
 
 
 ## Installazione su Raspberry Pi
@@ -27,7 +27,7 @@ Il nome dello script è storico: lo stesso installer serve Raspberry Pi e Ubuntu
 
 | Impostazione | Valore consigliato |
 | --- | --- |
-| Porta web | 8080 |
+| Porta web | 8089 |
 | Remoto Rclone | proton |
 | Cartella locale predefinita | /srv/pdss-sync |
 | Password web | Almeno 16 caratteri, distinta da Proton |
@@ -66,7 +66,7 @@ sudo systemctl status pdss-web pdss-scheduler --no-pager
 rclone version
 ```
 
-Apri dal PC o smartphone nella LAN fidata http://IP_DEL_RASPBERRY:8080 (o la porta scelta). Accedi con la password web, apri Impostazioni e collega Proton con email, password e codice 2FA se richiesto. Non disabilitare il 2FA. Apri File remoti e premi Aggiorna per consultare il cloud. Non esporre HTTP a Internet; usa VPN o HTTPS.
+Apri dal PC o smartphone nella LAN fidata http://IP_DEL_RASPBERRY:8089 (o la porta scelta). Accedi con la password web, apri Impostazioni e collega Proton con email, password e codice 2FA se richiesto. Non disabilitare il 2FA. Apri File remoti e premi Aggiorna per consultare il cloud. Non esporre HTTP a Internet; usa VPN o HTTPS.
 
 ### 5. Primo backup dalla GUI
 
@@ -125,9 +125,9 @@ cd proton-drive-secure-sync
 bash install-lxc.sh
 ```
 
-L'installer chiede **porta web** (8080), **nome del remoto Rclone** (`proton`), **cartella locale** (`/srv/pdss-sync`) e **password web** (almeno 16 caratteri). Scarica e aggiorna il progetto in `/opt/proton-drive-secure-sync`, prepara Python e abilita e avvia i servizi systemd. **Non devi inserire le credenziali Proton durante l'installazione.**
+L'installer chiede **porta web** (8089), **nome del remoto Rclone** (`proton`), **cartella locale** (`/srv/pdss-sync`) e **password web** (almeno 16 caratteri). Scarica e aggiorna il progetto in `/opt/proton-drive-secure-sync`, prepara Python e abilita e avvia i servizi systemd. **Non devi inserire le credenziali Proton durante l'installazione.**
 
-Apri quindi `http://IP_DEL_CONTAINER:8080` (o la porta scelta), accedi con la password web e vai in **Impostazioni → Collega Proton Drive**. Inserisci nome utente/email Proton, password Proton e, se richiesto, il codice 2FA. Premi **Collega o sostituisci account**. L'app prepara una configurazione Rclone temporanea e la salva solo dopo un test di connessione riuscito. Il browser non conserva la password nel modulo dopo la richiesta.
+Apri quindi `http://IP_DEL_CONTAINER:8089` (o la porta scelta), accedi con la password web e vai in **Impostazioni → Collega Proton Drive**. Inserisci nome utente/email Proton, password Proton e, se richiesto, il codice 2FA. Premi **Collega o sostituisci account**. L'app prepara una configurazione Rclone temporanea e la salva solo dopo un test di connessione riuscito. Il browser non conserva la password nel modulo dopo la richiesta.
 
 **Limiti:** serve una versione di Rclone compatibile con il backend `protondrive`, che è sperimentale. Alcuni account o flussi di autenticazione potrebbero richiedere una configurazione Rclone interattiva da terminale. La password Proton viene protetta con l'oscuramento di Rclone nel file locale: **l'oscuramento non è crittografia forte**; proteggi il container, il file di configurazione e i backup. Non utilizzare questa pagina su HTTP attraverso reti non fidate: usa HTTPS o una VPN.
 
@@ -178,12 +178,12 @@ hostname -I
 Da un dispositivo nella stessa LAN, apri:
 
 ```text
-http://IP_DEL_CONTAINER:8080
+http://IP_DEL_CONTAINER:8089
 ```
 
-Esempio puramente illustrativo: `http://192.168.1.150:8080` (o la porta scelta durante l’installazione). Accedi con la password scelta durante l'installazione (punto 2), poi apri **Impostazioni** per collegare il cloud. Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
+Esempio puramente illustrativo: `http://192.168.1.150:8089` (o la porta scelta durante l’installazione). Accedi con la password scelta durante l'installazione (punto 2), poi apri **Impostazioni** per collegare il cloud. Se non risponde, controlla `systemctl status pdss-web`, l'indirizzo IP, il firewall del container e quello di Proxmox.
 
-**Sicurezza:** HTTP non cifra le credenziali. Usa soltanto una LAN fidata o una VPN; per accesso remoto predisponi un reverse proxy HTTPS con controllo degli accessi. Non fare port forwarding pubblico della porta 8080.
+**Sicurezza:** HTTP non cifra le credenziali. Usa soltanto una LAN fidata o una VPN; per accesso remoto predisponi un reverse proxy HTTPS con controllo degli accessi. Non fare port forwarding pubblico della porta 8089.
 
 ### 6. Scegli le cartelle da copiare e la frequenza
 
@@ -260,7 +260,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-L'interfaccia sarà raggiungibile su `http://IP_SERVER:8080` **solo dalla rete fidata**. Il container scheduler esegue le attività programmate; la directory locale è montata in `/sync`. Per cambiare la directory host, imposta `PDSS_LOCAL_DIR` in `.env`.
+L'interfaccia sarà raggiungibile su `http://IP_SERVER:8089` **solo dalla rete fidata**. Il container scheduler esegue le attività programmate; la directory locale è montata in `/sync`. Per cambiare la directory host, imposta `PDSS_LOCAL_DIR` in `.env`.
 
 ## Funzionalità e limitazioni
 
