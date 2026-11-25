@@ -113,9 +113,42 @@ def cloud_disconnect():
 def files():
     require_auth()
     try:
-        return jsonify(files=RcloneClient(REMOTE).list_entries())
+        return jsonify(files=RcloneClient(REMOTE, timeout=60).list_entries(request.args.get('folder', '')))
     except SyncError:
         return jsonify(error='Impossibile leggere il remoto Rclone'), 502
+
+@app.get('/api/local')
+def local_files():
+    require_auth()
+    from scheduler import local_path
+    try:
+        folder = request.args.get('folder', '')
+        target = local_path(folder)
+        entries = []
+        for p in target.iterdir():
+            if p.is_symlink() or not (p.is_file() or p.is_dir()):
+                continue
+            entries.append(dict(path=p.name, is_dir=p.is_dir(), size=p.stat().st_size))
+        return jsonify(files=sorted(entries, key=lambda x: (not x['is_dir'], x['path'].lower())))
+    except (OSError, ValueError, SyncError):
+        return jsonify(error='Cartella locale non disponibile'), 400
+
+@app.get('/api/history')
+def history():
+    require_auth()
+    from scheduler import connect
+    with connect() as db:
+        return jsonify(history=[dict(r) for r in db.execute('SELECT * FROM history ORDER BY id DESC LIMIT 200')])
+
+@app.get('/api/quota')
+def quota():
+    require_auth()
+    import json
+    try:
+        data = json.loads(RcloneClient(REMOTE, timeout=30)._run('about', REMOTE, '--json', '--retries', '1'))
+        return jsonify({k: data[k] for k in ('total', 'used', 'free') if isinstance(data.get(k), int)})
+    except (SyncError, ValueError, TypeError):
+        return jsonify(error='Spazio non disponibile per questo remoto'), 502
 
 @app.post('/api/upload')
 def upload():
