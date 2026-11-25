@@ -3,7 +3,7 @@ set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 APP=/opt/proton-drive-secure-sync
 CONF=/etc/proton-drive-secure-sync
-[[ $EUID -eq 0 ]] || { echo "Esegui come root nel container LXC"; exit 1; }
+[[ $EUID -eq 0 ]] || { echo "Esegui con sudo su Linux (LXC o Raspberry Pi)"; exit 1; }
 [[ -d /run/systemd/system ]] || { echo "systemd non disponibile"; exit 1; }
 echo "=== Installazione guidata Proton Drive Secure Sync ==="
 read -r -p "Porta web [8080]: " PORT
@@ -17,7 +17,18 @@ SYNC=${SYNC:-/srv/pdss-sync}
 [[ $SYNC == /* && $SYNC != *" "* && $SYNC != *".."* && $SYNC != *"="* && $SYNC != *"'"* && $SYNC != *'"'* ]] || { echo "Percorso non valido"; exit 1; }
 [[ $SYNC != / && $SYNC != /etc && $SYNC != /root && $SYNC != /var && $SYNC != /opt ]] || { echo "Cartella troppo ampia"; exit 1; }
 apt-get update
-apt-get install -y git python3 python3-venv python3-pip rclone ca-certificates
+apt-get install -y git python3 python3-venv python3-pip rclone ca-certificates curl unzip
+if ! rclone config providers | grep '"Name": "protondrive"' >/dev/null; then
+  echo "Rclone con supporto Proton Drive necessario: installazione ufficiale."
+  TMP_INSTALL=$(mktemp)
+  curl --fail --silent --show-error --location https://rclone.org/install.sh -o "$TMP_INSTALL"
+  bash "$TMP_INSTALL"
+  rm -f "$TMP_INSTALL"
+  hash -r
+fi
+if ! rclone config providers | grep '"Name": "protondrive"' >/dev/null; then
+  echo "Backend Proton Drive non disponibile"; exit 1
+fi
 id pdss >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/pdss --shell /usr/sbin/nologin pdss
 if [[ -d "$APP/.git" ]]; then
   git -C "$APP" pull --ff-only
@@ -65,6 +76,7 @@ PDSS_DB=/var/lib/pdss/data/schedules.sqlite3
 PDSS_SYNC_ROOT=$SYNC
 PDSS_MAX_UPLOAD_MB=100
 PDSS_HTTPS=0
+XDG_CACHE_HOME=/var/lib/pdss/data/cache
 RCLONE_CONFIG=$CONF/rclone.conf
 EOF
 chown root:pdss "$CONF/app.env"
@@ -112,7 +124,7 @@ UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/pdss/data $SYNC
+ReadWritePaths=/var/lib/pdss/data /etc/proton-drive-secure-sync $SYNC
 PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
@@ -121,7 +133,7 @@ systemctl daemon-reload
 systemctl enable pdss-web pdss-scheduler
 echo "Il cloud si collega dalla GUI: Impostazioni -> Collega Proton Drive."
 systemctl restart pdss-web pdss-scheduler
-echo "Installazione completata! Apri http://IP_DEL_CONTAINER:$PORT"
-echo "IP del container: $(hostname -I)"
+echo "Installazione completata! Apri http://IP_DEL_SERVER:$PORT"
+echo "IP del server: $(hostname -I)"
 echo "Accedi e collega il cloud dalla sezione Impostazioni."
 echo "Non esporre HTTP a Internet: usa LAN fidata o VPN/HTTPS."
