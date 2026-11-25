@@ -7,12 +7,12 @@ function status(message){$('status').textContent='● '+message;log(message);}
 function page(name){document.querySelectorAll('.page').forEach(e=>e.classList.toggle('hidden',e.id!==name));document.querySelectorAll('.nav').forEach(e=>e.classList.toggle('active',e.dataset.page===name));}
 document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>page(b.dataset.page)));
 async function api(path,options={}){const r=await fetch(path,{credentials:'same-origin',...options,headers:{'X-CSRF-Token':token,...options.headers}});if(r.status===401){location.reload();throw Error('Sessione scaduta');}if(!r.ok){let msg='Richiesta non riuscita ('+r.status+')';try{const data=await r.json();msg=data.error||msg;}catch{}throw Error(msg);}return r;}
-function show(){const tbody=$('file-rows');tbody.replaceChildren();$('path').textContent='Percorso: /'+state.folder;const prefix=state.folder?state.folder+'/':'';const entries=state.files.filter(f=>f.path.startsWith(prefix)&&f.path.slice(prefix.length)&&!f.path.slice(prefix.length).includes('/'));for(const f of entries){const tr=document.createElement('tr');if(state.selected===f.path)tr.classList.add('selected');const name=document.createElement('td');name.textContent=(f.is_dir?'📁 ':'📄 ')+f.path.slice(prefix.length);const size=document.createElement('td');size.textContent=f.is_dir?'—':new Intl.NumberFormat('it-IT').format(f.size)+' B';const date=document.createElement('td');date.textContent=f.modified?f.modified.replace('T',' ').slice(0,16):'—';tr.append(name,size,date);tr.addEventListener('click',()=>{state.selected=f.path;show();});tr.addEventListener('dblclick',()=>{if(f.is_dir){state.folder=f.path;state.selected=null;show();}});tbody.append(tr);}if(!entries.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=3;td.textContent='Nessun elemento in questa cartella';tr.append(td);tbody.append(tr);}}
-async function refresh(){if(state.busy)return;state.busy=true;try{status('Aggiornamento elenco…');const data=await (await api('/api/files')).json();state.files=data.files||[];state.selected=null;show();status('Elenco aggiornato ('+state.files.length+' elementi)');}catch(e){status('Errore: '+e.message);}finally{state.busy=false;}}
+function show(){const tbody=$('file-rows');tbody.replaceChildren();$('path').textContent='Percorso: /'+state.folder;const prefix=state.folder?state.folder+'/':'';const entries=state.files.filter(f=>f.path.toLowerCase().includes($('file-search').value.toLowerCase())).filter(f=>f.path.startsWith(prefix)&&f.path.slice(prefix.length)&&!f.path.slice(prefix.length).includes('/'));for(const f of entries){const tr=document.createElement('tr');if(state.selected===f.path)tr.classList.add('selected');const name=document.createElement('td');name.textContent=(f.is_dir?'📁 ':'📄 ')+f.path.slice(prefix.length);const size=document.createElement('td');size.textContent=f.is_dir?'—':new Intl.NumberFormat('it-IT').format(f.size)+' B';const date=document.createElement('td');date.textContent=f.modified?f.modified.replace('T',' ').slice(0,16):'—';tr.append(name,size,date);tr.addEventListener('click',()=>{state.selected=f.path;show();});tr.addEventListener('dblclick',()=>{if(f.is_dir){if(state.busy)return;state.folder=f.path;state.selected=null;refresh();}});tbody.append(tr);}if(!entries.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=3;td.textContent='Nessun elemento in questa cartella';tr.append(td);tbody.append(tr);}}
+async function refresh(){if(state.busy)return;state.busy=true;try{$('file-message').textContent='Aggiornamento elenco…';status('Aggiornamento elenco…');const data=await (await api('/api/files?folder='+encodeURIComponent(state.folder))).json();state.files=data.files||[];state.selected=null;show();renderTree();$('file-message').textContent='Elenco aggiornato';status('Elenco aggiornato ('+state.files.length+' elementi)');}catch(e){state.files=[];show();$('file-message').textContent=e.message;status('Errore: '+e.message);}finally{state.busy=false;$('transfer-progress').hidden=true;}}
 $('refresh').addEventListener('click',refresh);
-$('up').addEventListener('click',()=>{state.folder=state.folder.split('/').slice(0,-1).join('/');state.selected=null;show();});
-$('upload').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file||state.busy)return;if(!confirm('Caricare '+file.name+' nella radice del remoto? Nessun file esistente deve essere sovrascritto.'))return;state.busy=true;try{status('Caricamento '+file.name+'…');const body=new FormData();body.append('file',file);await api('/api/upload',{method:'POST',body});status('Caricamento completato: '+file.name);state.busy=false;await refresh();}catch(err){status('Errore: '+err.message);}finally{state.busy=false;}});
-$('download').addEventListener('click',async()=>{const file=state.files.find(f=>f.path===state.selected);if(!file||file.is_dir){status('Seleziona un file');return;}if(state.busy)return;if(!confirm('Scaricare '+file.path+' sul dispositivo corrente?'))return;state.busy=true;try{status('Download '+file.path+'…');const response=await api('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:file.path})});const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=file.path.split('/').pop();document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);status('Download pronto: '+file.path);}catch(err){status('Errore: '+err.message);}finally{state.busy=false;}});
+$('up').addEventListener('click',()=>{if(state.busy)return;state.folder=state.folder.split('/').slice(0,-1).join('/');state.selected=null;refresh();});
+$('upload').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file||state.busy)return;if(!confirm('Caricare '+file.name+' nella radice del remoto? Nessun file esistente deve essere sovrascritto.'))return;state.busy=true;try{$('transfer-progress').hidden=false;$('transfer-progress').removeAttribute('value');status('Caricamento '+file.name+'…');const body=new FormData();body.append('file',file);await api('/api/upload',{method:'POST',body});status('Caricamento completato: '+file.name);state.busy=false;await refresh();}catch(err){status('Errore: '+err.message);}finally{state.busy=false;$('transfer-progress').hidden=true;}});
+$('download').addEventListener('click',async()=>{const file=state.files.find(f=>f.path===state.selected);if(!file||file.is_dir){status('Seleziona un file');return;}if(state.busy)return;if(!confirm('Scaricare '+file.path+' sul dispositivo corrente?'))return;state.busy=true;try{$('transfer-progress').hidden=false;$('transfer-progress').removeAttribute('value');status('Download '+file.path+'…');const response=await api('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:file.path})});const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=file.path.split('/').pop();document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);status('Download pronto: '+file.path);}catch(err){status('Errore: '+err.message);}finally{state.busy=false;$('transfer-progress').hidden=true;}});
 $('logout').addEventListener('click',async()=>{try{await api('/logout',{method:'POST'});location.reload();}catch(e){status(e.message);}});
 $('clear-log').addEventListener('click',()=>{state.events=[];$('events').textContent='';$('transfers-list').replaceChildren();});
 status('Pronto · trasferimenti manuali');
@@ -44,7 +44,7 @@ $('cloud-form').addEventListener('submit',async e=>{
     $('cloud-message').textContent='Account Proton Drive collegato e verificato.';
     $('cloud-form').reset();
     await cloudStatus();
-    await refresh();
+    state.files=[];state.folder='';state.selected=null;show();renderTree(true);
   }catch(err){$('cloud-message').textContent='Errore: '+err.message;}
   finally{
     data.password='';
@@ -69,7 +69,7 @@ $('cloud-remove').addEventListener('click',async()=>{
   try{
     await api('/api/cloud',{method:'DELETE'});
     $('cloud-form').reset();
-    state.files=[];state.folder='';state.selected=null;show();
+    state.files=[];state.folder='';state.selected=null;show();renderTree(true);
     $('cloud-message').textContent='Account scollegato. Nessun file remoto eliminato. Le attività programmate sono state disattivate.';
     await cloudStatus();
     await refreshJobs();
@@ -78,3 +78,48 @@ $('cloud-remove').addEventListener('click',async()=>{
     await cloudStatus();
   }
 });
+
+const knownFolders=new Set(['']);
+function renderTree(reset=false){
+  if(reset)knownFolders.clear();
+  knownFolders.add('');
+  for(const f of state.files)if(f.is_dir)knownFolders.add(f.path);
+  const tree=$('folder-tree');tree.replaceChildren();
+  for(const folder of [...knownFolders].sort()){
+    const b=document.createElement('button');b.textContent='　'.repeat(folder?folder.split('/').length-1:0)+(folder?'📁 '+folder.split('/').pop():'📁 /');
+    b.addEventListener('click',()=>{if(state.busy)return;state.folder=folder;refresh();});tree.append(b);
+  }
+}
+$('file-search').addEventListener('input',show);
+let localFolder='';
+async function refreshLocal(){
+  const list=$('local-list');list.textContent='Caricamento…';
+  try{
+    const data=await (await api('/api/local?folder='+encodeURIComponent(localFolder))).json();
+    $('local-path').textContent='/'+localFolder;list.replaceChildren();
+    for(const f of data.files){
+      const b=document.createElement(f.is_dir?'button':'p');b.textContent=(f.is_dir?'📁 ':'📄 ')+f.path+(f.is_dir?'':' · '+f.size+' B');
+      if(f.is_dir)b.addEventListener('click',()=>{localFolder=[localFolder,f.path].filter(Boolean).join('/');refreshLocal();});
+      list.append(b);
+    }
+    if(!data.files.length)list.textContent='Cartella vuota';
+  }catch(e){list.textContent=e.message;}
+}
+$('local-up').addEventListener('click',()=>{localFolder=localFolder.split('/').slice(0,-1).join('/');refreshLocal();});
+$('local-refresh').addEventListener('click',refreshLocal);
+document.querySelector('[data-page="files"]').addEventListener('click',refreshLocal);
+async function refreshHistory(){
+  const list=$('history-list');
+  try{const data=await (await api('/api/history')).json();list.replaceChildren();for(const h of data.history){const p=document.createElement('p');p.textContent=displayTime(h.started)+' · '+h.job_name+' · '+h.status+' · '+Math.round(h.finished-h.started)+' s';list.append(p);}if(!data.history.length)list.textContent='Nessuna esecuzione registrata';}catch(e){list.textContent=e.message;}
+}
+document.querySelector('[data-page="sync"]').addEventListener('click',refreshHistory);
+$('refresh-jobs').addEventListener('click',refreshHistory);
+document.querySelector('[data-page="dashboard"]').addEventListener('click',async()=>{
+  try{const cloud=await (await api('/api/cloud')).json();$('dashboard-status').textContent=cloud.configured?'Proton configurato (stato locale, non verificato)':'Proton non collegato';
+  const data=await (await api('/api/schedules')).json();const next=data.jobs.filter(j=>j.enabled&&j.next_run).sort((a,b)=>a.next_run-b.next_run)[0];$('dashboard-next').textContent=next?'Prossima: '+next.name+' · '+displayTime(next.next_run):'Nessuna attività programmata';}catch(e){$('dashboard-status').textContent=e.message;}
+});
+$('quota-check').addEventListener('click',async()=>{
+  const b=$('quota-check');b.disabled=true;$('quota-result').textContent='Lettura spazio…';
+  try{const data=await (await api('/api/quota')).json();$('quota-result').textContent=Object.entries(data).map(([k,v])=>({total:'Totale',used:'Occupato',free:'Libero'}[k])+': '+(v/1073741824).toFixed(2)+' GiB').join(' · ')||'Spazio non comunicato dal remoto';}catch(e){$('quota-result').textContent=e.message;}finally{b.disabled=false;}
+});
+refreshLocal();
