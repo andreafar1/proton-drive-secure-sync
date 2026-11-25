@@ -9,5 +9,5 @@ COPY web ./web
 COPY webapp.py scheduler.py cloud_setup.py ./
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin appuser && mkdir -p /data /config && chown appuser:appuser /data
 USER appuser
-EXPOSE 8080
-CMD ["gunicorn","--workers","2","--threads","2","--timeout","3600","--bind","0.0.0.0:8080","webapp:app"]
+EXPOSE 8089
+CMD ["gunicorn","--workers","2","--threads","2","--timeout","3600","--bind","0.0.0.0:8089","webapp:app"]
