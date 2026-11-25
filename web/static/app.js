@@ -139,7 +139,8 @@ async function loadPicker(){
     const list=$('picker-list');list.replaceChildren();
     for(const f of data.files.filter(f=>f.is_dir)){
       const b=document.createElement('button');b.type='button';
-      b.textContent='📁 '+f.path.split('/').pop();
+      b.className='picker-folder';
+      const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('class','ui-icon folder-icon');icon.setAttribute('aria-hidden','true');const shape=document.createElementNS('http://www.w3.org/2000/svg','path');shape.setAttribute('d','M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3z');icon.append(shape);const name=document.createElement('span');name.textContent=f.path.split('/').pop();const arrow=document.createElement('span');arrow.className='picker-arrow';arrow.textContent='›';b.append(icon,name,arrow);
       b.addEventListener('click',()=>{pickerFolder=f.path;loadPicker();});
       list.append(b);
     }
@@ -149,11 +150,13 @@ async function loadPicker(){
   finally{if(generation===pickerGeneration)$('picker-up').disabled=!folder||folder==='/';}
 }
 function openPicker(kind){
-  pickerKind=kind;pickerFolder=kind==='local'?'/':'';$('folder-picker').hidden=false;loadPicker();
+  pickerKind=kind;pickerFolder=kind==='local'?'/':'';$('folder-picker').showModal();loadPicker();
 }
-function closePicker(){pickerGeneration++;$('folder-picker').hidden=true;}
+function closePicker(){pickerGeneration++;$('folder-picker').close();}
 $('pick-local').addEventListener('click',()=>openPicker('local'));
 $('pick-remote').addEventListener('click',()=>openPicker('remote'));
 $('picker-up').addEventListener('click',()=>{pickerFolder=pickerFolder.split('/').slice(0,-1).join('/')||(pickerKind==='local'?'/':'');loadPicker();});
 $('picker-select').addEventListener('click',()=>{$(pickerKind==='local'?'job-local':'job-remote').value=pickerFolder;closePicker();});
 $('picker-close').addEventListener('click',closePicker);
+
+$('folder-picker').addEventListener('cancel',()=>{pickerGeneration++;});
