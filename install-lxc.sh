@@ -101,7 +101,7 @@ RestartSec=5
 UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
 ReadWritePaths=/var/lib/pdss/data /etc/proton-drive-secure-sync
 PrivateTmp=true
 [Install]
@@ -123,8 +123,8 @@ RestartSec=5
 UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/pdss/data /etc/proton-drive-secure-sync $SYNC
+ProtectHome=read-only
+ReadWritePaths=/var/lib/pdss/data /etc/proton-drive-secure-sync $SYNC -/mnt -/media -/srv -/home
 PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
