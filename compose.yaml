@@ -28,7 +28,7 @@ services:
     container_name: proton-drive-secure-sync
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8089:8089"
     environment: *common-env
     volumes: *common-volumes
     <<: *common-security
