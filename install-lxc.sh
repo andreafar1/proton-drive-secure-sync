@@ -6,8 +6,8 @@ CONF=/etc/proton-drive-secure-sync
 [[ $EUID -eq 0 ]] || { echo "Esegui con sudo su Linux (LXC o Raspberry Pi)"; exit 1; }
 [[ -d /run/systemd/system ]] || { echo "systemd non disponibile"; exit 1; }
 echo "=== Installazione guidata Proton Drive Secure Sync ==="
-read -r -p "Porta web [8080]: " PORT
-PORT=${PORT:-8080}
+read -r -p "Porta web [8089]: " PORT
+PORT=${PORT:-8089}
 [[ $PORT =~ ^[0-9]+$ ]] && (( PORT>=1024 && PORT<=65535 )) || { echo "Porta non valida"; exit 1; }
 read -r -p "Nome remoto Rclone [proton]: " REMOTE
 REMOTE=${REMOTE:-proton}
