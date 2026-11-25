@@ -117,6 +117,29 @@ def files():
     except SyncError:
         return jsonify(error='Impossibile leggere il remoto Rclone'), 502
 
+@app.get('/api/server-folders')
+def server_folders():
+    require_auth()
+    from scheduler import SERVER_ROOTS, local_path
+    folder = request.args.get('folder', '/')
+    try:
+        if folder == '/':
+            candidates = [Path(p) for p in SERVER_ROOTS]
+        else:
+            candidates = local_path(folder).iterdir()
+        entries = []
+        for p in candidates:
+            if p.is_symlink() or not p.is_dir():
+                continue
+            try:
+                target = local_path(str(p))
+            except (OSError, ValueError, SyncError):
+                continue
+            entries.append(dict(path=str(target), is_dir=True))
+        return jsonify(files=sorted(entries, key=lambda x: x['path']))
+    except (OSError, ValueError, SyncError):
+        return jsonify(error='Cartella non accessibile'), 400
+
 @app.get('/api/local')
 def local_files():
     require_auth()
