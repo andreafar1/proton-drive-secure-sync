@@ -37,7 +37,16 @@ def connect():
     db.commit()
     return db
 
+SERVER_ROOTS = ('/mnt', '/media', '/srv', '/home')
+
 def local_path(relative):
+    if isinstance(relative, str) and relative.startswith('/'):
+        target = Path(relative).resolve(strict=True)
+        if not target.is_dir() or not any(target.is_relative_to(Path(base)) for base in SERVER_ROOTS):
+            raise ValueError('Cartella esterna alle aree dati consentite')
+        if not os.access(target, os.R_OK | os.X_OK):
+            raise ValueError('Cartella non accessibile a pdss')
+        return target
     if not isinstance(relative, str) or relative.startswith('/') or '\\' in relative or '\x00' in relative:
         raise ValueError('Percorso locale non valido')
     if relative not in ('', '.'):
