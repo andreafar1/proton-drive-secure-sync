@@ -190,3 +190,20 @@ La precedente GUI GTK3 rimane nel repository (`run.py`), ma per Ubuntu LXC senza
 ## Licenza e contributi
 
 Prima di distribuire o riutilizzare il progetto, verificare la presenza di una licenza esplicita nel repository. Segnalazioni di bug e test con dati non sensibili sono benvenuti.
+
+
+## Raspberry Pi (installazione nativa)
+
+Consigliato Raspberry Pi 4 o 5 con Raspberry Pi OS Lite 64 bit (Debian, systemd). Non serve Docker. Il medesimo installer LXC rileva la disponibilità del backend Proton Drive e, se necessario, esegue lo script ufficiale di installazione Rclone.
+
+```bash
+sudo apt update
+sudo apt install -y git
+git clone https://github.com/andreafar1/proton-drive-secure-sync.git
+cd proton-drive-secure-sync
+sudo bash install-lxc.sh
+```
+
+Per un SSD USB, montarlo stabilmente (ad esempio in /mnt/ssd) prima di installare e scegliere una sottocartella dedicata come /mnt/ssd/proton-sync. Verificare che l'utente pdss possa accedervi. Non usare una cartella sotto /home, protetta dalle unità systemd. Prima di attivare i job verificare che il disco sia montato anche dopo un riavvio; non eseguire copie su un mount assente.
+
+Aprire http://IP_DEL_RASPBERRY:8080 (o la porta scelta) dalla LAN fidata e configurare Proton dalle Impostazioni. Non esporre HTTP a Internet. Supporto ARM previsto, non ancora collaudato su hardware Raspberry Pi reale.
