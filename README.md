@@ -1,8 +1,102 @@
-# Proton Drive Secure Sync
+# Proton Drive Secure Sync — Web v0.7
+
+**Installazione:** [Raspberry Pi](#installazione-su-raspberry-pi) · [Proxmox LXC](#installazione-su-ubuntu-lxc-in-proxmox-consigliata) · [Docker](#installazione-alternativa-con-docker-compose)
 
 Interfaccia web sperimentale per consultare Proton Drive tramite Rclone, trasferire file manualmente e programmare copie unidirezionali **senza cancellazioni automatiche**.
 
-> **Attenzione:** progetto non ufficiale Proton, non sottoposto ad audit e non ancora collaudato end-to-end su un account Proton Drive reale. Prima prova con file sacrificabili e conserva sempre un backup indipendente. Non esporre la porta 8080 direttamente a Internet.
+> **Attenzione:** progetto non ufficiale Proton, non sottoposto ad audit e non completamente collaudato end-to-end; la compatibilità Raspberry Pi non è ancora verificata su hardware reale. Prima prova con file sacrificabili e conserva sempre un backup indipendente. Non esporre la porta 8080 direttamente a Internet.
+
+
+## Installazione su Raspberry Pi
+
+### 1. Preparazione
+
+Consigliato Raspberry Pi 4 o 5, Raspberry Pi OS Lite **64 bit**, alimentatore adeguato, connessione di rete e microSD o SSD. Docker non è necessario. Con Raspberry Pi Imager scegli Raspberry Pi OS Lite (64-bit), configura nome host, utente, rete e SSH, quindi avvia il dispositivo. Collegati via SSH con il nome utente e l'indirizzo IP scelti.
+
+### 2. Installazione guidata
+
+```bash
+sudo apt update
+sudo apt install -y git
+git clone https://github.com/andreafar1/proton-drive-secure-sync.git
+cd proton-drive-secure-sync
+sudo bash install-lxc.sh
+```
+
+Il nome dello script è storico: lo stesso installer serve Raspberry Pi e Ubuntu LXC. Installa Python, Rclone e i servizi systemd; se manca il backend Proton Drive, scarica ed esegue lo script ufficiale Rclone con privilegi root. Verifica la provenienza del codice prima di eseguirlo.
+
+| Impostazione | Valore consigliato |
+| --- | --- |
+| Porta web | 8080 |
+| Remoto Rclone | proton |
+| Cartella locale predefinita | /srv/pdss-sync |
+| Password web | Almeno 16 caratteri, distinta da Proton |
+
+### 3. Disco USB o SSD (facoltativo)
+
+Identifica il disco senza formattarlo:
+
+```bash
+lsblk -f
+```
+
+Configura un montaggio persistente tramite UUID in /etc/fstab, ad esempio in /mnt/ssd, secondo il filesystem effettivo. Prima di creare la directory di backup verifica il montaggio:
+
+```bash
+findmnt --mountpoint /mnt/ssd
+```
+
+Solo se il disco risulta montato, puoi creare una nuova directory dedicata (dopo l'installazione, quando esiste l'utente pdss):
+
+```bash
+sudo install -d -o pdss -g pdss -m 0750 /mnt/ssd/proton-sync
+sudo -u pdss test -r /mnt/ssd/proton-sync
+sudo -u pdss test -w /mnt/ssd/proton-sync
+```
+
+Per directory esistenti, conserva proprietari e permessi; concedi soltanto l'accesso necessario a pdss, ad esempio tramite ACL dove supportate. Non usare chmod 777. Per il backup verso Proton occorrono lettura dei file e attraversamento delle directory; per il ripristino locale occorre anche scrittura. Il selettore non mostra directory inaccessibili.
+
+**Importante:** non è ancora presente un controllo automatico del montaggio del disco. Verifica il montaggio dopo ogni riavvio e disattiva le attività prima di scollegare il disco. In caso contrario una copia verso locale potrebbe finire sulla microSD.
+
+### 4. Accesso e collegamento Proton
+
+```bash
+hostname -I
+sudo systemctl status pdss-web pdss-scheduler --no-pager
+rclone version
+```
+
+Apri dal PC o smartphone nella LAN fidata http://IP_DEL_RASPBERRY:8080 (o la porta scelta). Accedi con la password web, apri Impostazioni e collega Proton con email, password e codice 2FA se richiesto. Non disabilitare il 2FA. Apri File remoti e premi Aggiorna per consultare il cloud. Non esporre HTTP a Internet; usa VPN o HTTPS.
+
+### 5. Primo backup dalla GUI
+
+1. Apri Sincronizzazione e assegna un nome all'attività.
+2. Scegli Locale → Proton Drive.
+3. Premi Sfoglia accanto a Cartella sul server, entra in mnt → ssd → proton-sync e seleziona la cartella.
+4. Scegli la destinazione Proton tramite Sfoglia oppure digita un percorso relativo, ad esempio Backup/Raspberry.
+5. Seleziona la frequenza e premi Crea attività.
+6. Premi Avvia ora per provare con pochi file non importanti; verifica i risultati e la cronologia. Solo dopo premi Attiva per programmare le copie.
+
+Le attività continuano anche a browser chiuso. La copia non elimina file e non aggiorna file già presenti: non è un backup versionato né una sincronizzazione bidirezionale.
+
+### 6. Aggiornamento e diagnosi
+
+```bash
+cd /opt/proton-drive-secure-sync
+sudo git pull --ff-only
+sudo /opt/proton-drive-secure-sync/.venv/bin/pip install -r requirements-web.txt
+sudo systemctl restart pdss-web pdss-scheduler
+```
+
+Attendi la conclusione delle copie prima di riavviare. Se cambiano le unità systemd, riesegui l'installer con le impostazioni precedenti. Premi Ctrl+F5 nel browser.
+
+```bash
+sudo journalctl -u pdss-web -n 50 --no-pager
+sudo journalctl -u pdss-scheduler -n 50 --no-pager
+sudo systemctl is-enabled pdss-web pdss-scheduler
+```
+
+Non condividere credenziali, token o codici 2FA. La procedura è prevista per ARM64 ma non ancora collaudata su Raspberry Pi fisico.
 
 ## Installazione su Ubuntu LXC in Proxmox (consigliata)
 
@@ -33,7 +127,7 @@ bash install-lxc.sh
 
 L'installer chiede **porta web** (8080), **nome del remoto Rclone** (`proton`), **cartella locale** (`/srv/pdss-sync`) e **password web** (almeno 16 caratteri). Scarica e aggiorna il progetto in `/opt/proton-drive-secure-sync`, prepara Python e abilita e avvia i servizi systemd. **Non devi inserire le credenziali Proton durante l'installazione.**
 
-Apri quindi `http://IP_DEL_CONTAINER:8080` (o la porta scelta), accedi con la password web e vai in **Impostazioni → Collega Proton Drive**. Inserisci nome utente/email Proton, password Proton e, se richiesto, il codice 2FA. Premi **Collega e verifica account**. L'app prepara una configurazione Rclone temporanea e la salva solo dopo un test di connessione riuscito. Il browser non conserva la password nel modulo dopo la richiesta.
+Apri quindi `http://IP_DEL_CONTAINER:8080` (o la porta scelta), accedi con la password web e vai in **Impostazioni → Collega Proton Drive**. Inserisci nome utente/email Proton, password Proton e, se richiesto, il codice 2FA. Premi **Collega o sostituisci account**. L'app prepara una configurazione Rclone temporanea e la salva solo dopo un test di connessione riuscito. Il browser non conserva la password nel modulo dopo la richiesta.
 
 **Limiti:** serve una versione di Rclone compatibile con il backend `protondrive`, che è sperimentale. Alcuni account o flussi di autenticazione potrebbero richiedere una configurazione Rclone interattiva da terminale. La password Proton viene protetta con l'oscuramento di Rclone nel file locale: **l'oscuramento non è crittografia forte**; proteggi il container, il file di configurazione e i backup. Non utilizzare questa pagina su HTTP attraverso reti non fidate: usa HTTPS o una VPN.
 
@@ -93,7 +187,7 @@ Esempio puramente illustrativo: `http://192.168.1.150:8080` (o la porta scelta d
 
 ### 6. Scegli le cartelle da copiare e la frequenza
 
-La cartella locale predefinita esposta all'applicazione è:
+La cartella locale predefinita per i percorsi relativi e il pannello File remoti è:
 
 ```text
 /srv/pdss-sync
@@ -107,19 +201,19 @@ Crea, ad esempio:
 install -d -o pdss -g pdss /srv/pdss-sync/Documenti
 ```
 
-Nella pagina web apri **Sincronizzazione** → crea una nuova attività. Esempio:
+Nella pagina web apri **Sincronizzazione → Nuova attività di backup**. Premi **Sfoglia** accanto a **Cartella sul server** per navigare nelle aree `/home`, `/media`, `/mnt` e `/srv` accessibili all'utente `pdss`. Seleziona la directory nella finestra separata. Premi **Sfoglia** accanto a **Cartella Proton Drive** per scegliere la destinazione. I percorsi relativi precedenti restano compatibili. Esempio:
 
 | Campo | Valore |
 | --- | --- |
 | Nome | Backup Documenti |
 | Direzione | Locale → Proton Drive |
-| Cartella locale | `Documenti` |
+| Cartella sul server | `/srv/pdss-sync/Documenti` |
 | Cartella remota | `Backup/Documenti` |
 | Frequenza | Ogni 60 minuti |
 
 Le attività nascono **disattivate**. Puoi premere **Avvia ora** per una copia manuale, oppure **Attiva** per programmare le esecuzioni. Le opzioni disponibili sono: manuale, ogni 15 o 30 minuti, ogni 1, 6, 12 o 24 ore.
 
-Il pianificatore gira come servizio systemd anche quando chiudi il browser. Conserva attività, ultimo esito e prossima esecuzione nel database SQLite `/var/lib/pdss/data/schedules.sqlite3`.
+Il pianificatore gira come servizio systemd anche quando chiudi il browser. Conserva attività, cronologia delle esecuzioni concluse, ultimo esito e prossima esecuzione nel database SQLite `/var/lib/pdss/data/schedules.sqlite3`.
 
 **Limite importante:** usa `rclone copy --ignore-existing`. Copia file nuovi, ma **non aggiorna** quelli già presenti nella destinazione, anche se modificati. Non è una sincronizzazione bidirezionale; non cancella file, non risolve conflitti e non garantisce atomicità in presenza di scritture concorrenti.
 
@@ -135,6 +229,8 @@ git pull --ff-only
 /opt/proton-drive-secure-sync/.venv/bin/pip install -r requirements-web.txt
 systemctl restart pdss-web pdss-scheduler
 ```
+
+Se l'aggiornamento modifica le unità systemd, esegui anche `sudo bash install-lxc.sh` mantenendo le impostazioni precedenti. L'installer riscrive app.env e le unità: eventuali personalizzazioni vanno conservate separatamente. Aggiorna il browser con Ctrl+F5.
 
 ### Comandi utili
 
@@ -173,8 +269,11 @@ L'interfaccia sarà raggiungibile su `http://IP_SERVER:8080` **solo dalla rete f
 - Pianificazione di copie unidirezionali con frequenze configurabili.
 - Nessuna cancellazione automatica, nessuna sovrascrittura intenzionale.
 - Accesso con password condivisa; nessun sistema multiutente o rate limiting applicativo.
-- Registro browser temporaneo; per le attività pianificate sono memorizzati solo l'ultimo stato e i tempi.
-- Nessuna barra di progresso reale o cancellazione dei trasferimenti.
+- Registro browser temporaneo; cronologia SQLite persistente delle sincronizzazioni concluse (ultime 200 mostrate).
+- Dashboard con stato locale della configurazione, prossima attività e lettura manuale dello spazio cloud se supportata da Rclone.
+- File manager a due pannelli, albero delle cartelle visitate, ricerca nella cartella corrente e caricamento su richiesta.
+- Selettore grafico delle cartelle del server con finestra separata, icone vettoriali e layout responsive.
+- Indicatore di attività dei trasferimenti manuali, senza percentuale reale o annullamento.
 - Verifica SHA-256 locale non equivalente a verifica crittografica del contenuto remoto.
 - Test unitari con Rclone simulato, non una prova di sicurezza o affidabilità end-to-end.
 
@@ -190,20 +289,3 @@ La precedente GUI GTK3 rimane nel repository (`run.py`), ma per Ubuntu LXC senza
 ## Licenza e contributi
 
 Prima di distribuire o riutilizzare il progetto, verificare la presenza di una licenza esplicita nel repository. Segnalazioni di bug e test con dati non sensibili sono benvenuti.
-
-
-## Raspberry Pi (installazione nativa)
-
-Consigliato Raspberry Pi 4 o 5 con Raspberry Pi OS Lite 64 bit (Debian, systemd). Non serve Docker. Il medesimo installer LXC rileva la disponibilità del backend Proton Drive e, se necessario, esegue lo script ufficiale di installazione Rclone.
-
-```bash
-sudo apt update
-sudo apt install -y git
-git clone https://github.com/andreafar1/proton-drive-secure-sync.git
-cd proton-drive-secure-sync
-sudo bash install-lxc.sh
-```
-
-Per un SSD USB, montarlo stabilmente (ad esempio in /mnt/ssd) prima di installare e scegliere una sottocartella dedicata come /mnt/ssd/proton-sync. Verificare che l'utente pdss possa accedervi. Non usare una cartella sotto /home, protetta dalle unità systemd. Prima di attivare i job verificare che il disco sia montato anche dopo un riavvio; non eseguire copie su un mount assente.
-
-Aprire http://IP_DEL_RASPBERRY:8080 (o la porta scelta) dalla LAN fidata e configurare Proton dalle Impostazioni. Non esporre HTTP a Internet. Supporto ARM previsto, non ancora collaudato su hardware Raspberry Pi reale.
