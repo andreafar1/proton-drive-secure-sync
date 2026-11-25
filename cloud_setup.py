@@ -49,8 +49,9 @@ def save_proton(data):
             parser.read_file(stream)
     except (OSError, configparser.Error) as exc:
         raise ValueError("Impossibile leggere la configurazione Rclone") from exc
-    if not parser.has_section(REMOTE):
-        parser.add_section(REMOTE)
+    if parser.has_section(REMOTE):
+        parser.remove_section(REMOTE)
+    parser.add_section(REMOTE)
     parser.set(REMOTE, "type", "protondrive")
     parser.set(REMOTE, "username", user)
     parser.set(REMOTE, "password", _obscure(password))
@@ -74,7 +75,10 @@ def save_proton(data):
             raise ValueError("Connessione Proton non riuscita o scaduta") from exc
         if result.returncode:
             raise ValueError("Autenticazione Proton non riuscita. Verifica credenziali, 2FA e compatibilità Rclone.")
-        # 2FA is a one-time authentication challenge, not a durable credential.
+        # Preserve session tokens written by Rclone during successful login.
+        parser = configparser.RawConfigParser(interpolation=None)
+        with open(candidate, encoding="utf-8") as stream:
+            parser.read_file(stream)
         parser.remove_option(REMOTE, "2fa")
         with open(candidate, "w", encoding="utf-8") as stream:
             parser.write(stream)
