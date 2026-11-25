@@ -33,6 +33,7 @@ def connect():
         next_run REAL, last_run REAL, last_status TEXT NOT NULL DEFAULT 'Mai eseguito',
         running INTEGER NOT NULL DEFAULT 0, run_requested INTEGER NOT NULL DEFAULT 0
     )''')
+    db.execute('CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY, job_name TEXT NOT NULL, started REAL NOT NULL, finished REAL NOT NULL, status TEXT NOT NULL)')
     db.commit()
     return db
 
@@ -156,8 +157,10 @@ def tick():
             ORDER BY run_requested DESC, next_run ASC LIMIT 1''', (now,)).fetchone()
         if row is None: return False
         db.execute('UPDATE jobs SET running=1,run_requested=0 WHERE id=?', (row['id'],))
+    started = time.time()
     status = run_job(row)
     with connect() as db:
+        db.execute('INSERT INTO history(job_name,started,finished,status) VALUES(?,?,?,?)', (row['name'], started, time.time(), status))
         current = db.execute('SELECT interval_minutes,enabled FROM jobs WHERE id=?', (row['id'],)).fetchone()
         if current:
             next_run = time.time()+current['interval_minutes']*60 if current['enabled'] and current['interval_minutes'] else None
