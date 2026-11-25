@@ -7,3 +7,5 @@
 .job-card{background:white;border:1px solid #ded9e7;border-radius:12px;padding:17px;margin-bottom:10px}
 .job-card h3{margin:0 0 8px;color:#50318b}.job-card p{color:#544d61;font-size:14px;overflow-wrap:anywhere}
 .job-actions{display:flex;gap:8px;flex-wrap:wrap}.job-actions button{font-size:13px}
+
+.browser-panes{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:20px}.browser-panes>div{min-width:0;overflow-wrap:anywhere}#folder-tree,#local-list{display:flex;flex-direction:column;align-items:flex-start;gap:4px}#transfer-progress{width:100%}@media(max-width:850px){.browser-panes{grid-template-columns:1fr}}
