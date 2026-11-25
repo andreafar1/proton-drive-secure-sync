@@ -123,3 +123,37 @@ $('quota-check').addEventListener('click',async()=>{
   try{const data=await (await api('/api/quota')).json();$('quota-result').textContent=Object.entries(data).map(([k,v])=>({total:'Totale',used:'Occupato',free:'Libero'}[k])+': '+(v/1073741824).toFixed(2)+' GiB').join(' · ')||'Spazio non comunicato dal remoto';}catch(e){$('quota-result').textContent=e.message;}finally{b.disabled=false;}
 });
 refreshLocal();
+
+let pickerKind='local', pickerFolder='', pickerGeneration=0;
+async function loadPicker(){
+  const generation=++pickerGeneration;
+  const kind=pickerKind, folder=pickerFolder;
+  $('picker-title').textContent=kind==='local'?'Scegli cartella locale':'Scegli cartella Proton Drive';
+  $('picker-path').textContent='/'+folder;
+  $('picker-list').textContent='Caricamento cartelle…';
+  $('picker-select').disabled=true;
+  $('picker-up').disabled=true;
+  try{
+    const data=await (await api((kind==='local'?'/api/local':'/api/files')+'?folder='+encodeURIComponent(folder))).json();
+    if(generation!==pickerGeneration)return;
+    const list=$('picker-list');list.replaceChildren();
+    for(const f of data.files.filter(f=>f.is_dir)){
+      const b=document.createElement('button');b.type='button';
+      b.textContent='📁 '+f.path.split('/').pop();
+      b.addEventListener('click',()=>{pickerFolder=kind==='local'?[folder,f.path].filter(Boolean).join('/'):f.path;loadPicker();});
+      list.append(b);
+    }
+    if(!list.children.length)list.textContent='Nessuna sottocartella';
+    $('picker-select').disabled=false;
+  }catch(e){if(generation===pickerGeneration)$('picker-list').textContent=e.message;}
+  finally{if(generation===pickerGeneration)$('picker-up').disabled=!folder;}
+}
+function openPicker(kind){
+  pickerKind=kind;pickerFolder='';$('folder-picker').hidden=false;loadPicker();
+}
+function closePicker(){pickerGeneration++;$('folder-picker').hidden=true;}
+$('pick-local').addEventListener('click',()=>openPicker('local'));
+$('pick-remote').addEventListener('click',()=>openPicker('remote'));
+$('picker-up').addEventListener('click',()=>{pickerFolder=pickerFolder.split('/').slice(0,-1).join('/');loadPicker();});
+$('picker-select').addEventListener('click',()=>{$(pickerKind==='local'?'job-local':'job-remote').value=pickerFolder;closePicker();});
+$('picker-close').addEventListener('click',closePicker);
