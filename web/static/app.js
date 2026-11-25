@@ -19,7 +19,7 @@ status('Pronto · trasferimenti manuali');
 // Nessun caricamento automatico del cloud.
 
 function displayTime(t){return t?new Date(t*1000).toLocaleString('it-IT'):'—';}
-async function refreshJobs(){try{const data=await (await api('/api/schedules')).json();const list=$('job-list');list.replaceChildren();if(!data.jobs.length){list.textContent='Nessuna attività configurata';return;}for(const j of data.jobs){const card=document.createElement('div');card.className='job-card';const title=document.createElement('h3');title.textContent=j.name;const details=document.createElement('p');details.textContent=(j.direction==='upload'?'Locale → Proton':'Proton → Locale')+' · /sync/'+j.local_path+' ⇄ '+(j.remote_path||'/')+' · '+(j.interval_minutes?('ogni '+j.interval_minutes+' minuti'):'manuale');const state=document.createElement('p');state.textContent=(j.running?'In esecuzione · ':j.enabled?'Attiva · ':'Disattivata · ')+'Ultima: '+displayTime(j.last_run)+' · '+j.last_status+' · Prossima: '+displayTime(j.next_run);const actions=document.createElement('div');actions.className='job-actions';function action(label,method,path,body,question){const b=document.createElement('button');b.textContent=label;b.addEventListener('click',async()=>{if(question&&!confirm(question))return;try{await api(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});status(label+': '+j.name);await refreshJobs();}catch(e){status('Errore: '+e.message);}});actions.append(b);}action('Avvia ora','POST','/api/schedules/'+j.id+'/run');if(j.interval_minutes){action(j.enabled?'Disattiva':'Attiva','POST','/api/schedules/'+j.id+'/enable',{enabled:!j.enabled});}action('Elimina attività','DELETE','/api/schedules/'+j.id,null,'Eliminare solo la configurazione '+j.name+'? Nessun file sarà cancellato.');card.append(title,details,state,actions);list.append(card);}}catch(e){status('Errore attività: '+e.message);}}
+async function refreshJobs(){try{const data=await (await api('/api/schedules')).json();const list=$('job-list');list.replaceChildren();if(!data.jobs.length){list.textContent='Nessuna attività configurata';return;}for(const j of data.jobs){const card=document.createElement('div');card.className='job-card';const title=document.createElement('h3');title.textContent=j.name;const details=document.createElement('p');details.textContent=(j.direction==='upload'?'Locale → Proton':'Proton → Locale')+' · '+(j.local_path.startsWith('/')?j.local_path:'/sync/'+j.local_path)+' ⇄ '+(j.remote_path||'/')+' · '+(j.interval_minutes?('ogni '+j.interval_minutes+' minuti'):'manuale');const state=document.createElement('p');state.textContent=(j.running?'In esecuzione · ':j.enabled?'Attiva · ':'Disattivata · ')+'Ultima: '+displayTime(j.last_run)+' · '+j.last_status+' · Prossima: '+displayTime(j.next_run);const actions=document.createElement('div');actions.className='job-actions';function action(label,method,path,body,question){const b=document.createElement('button');b.textContent=label;b.addEventListener('click',async()=>{if(question&&!confirm(question))return;try{await api(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});status(label+': '+j.name);await refreshJobs();}catch(e){status('Errore: '+e.message);}});actions.append(b);}action('Avvia ora','POST','/api/schedules/'+j.id+'/run');if(j.interval_minutes){action(j.enabled?'Disattiva':'Attiva','POST','/api/schedules/'+j.id+'/enable',{enabled:!j.enabled});}action('Elimina attività','DELETE','/api/schedules/'+j.id,null,'Eliminare solo la configurazione '+j.name+'? Nessun file sarà cancellato.');card.append(title,details,state,actions);list.append(card);}}catch(e){status('Errore attività: '+e.message);}}
 $('schedule-form').addEventListener('submit',async e=>{e.preventDefault();const data={name:$('job-name').value.trim(),direction:$('job-direction').value,local_path:$('job-local').value.trim(),remote_path:$('job-remote').value.trim(),interval_minutes:Number($('job-interval').value)};if(!confirm('Creare questa attività? Sarà disattivata finché non la abiliti o avvii manualmente.'))return;try{await api('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});$('schedule-form').reset();status('Attività creata');await refreshJobs();}catch(err){status('Errore: '+err.message);}});
 $('refresh-jobs').addEventListener('click',refreshJobs);
 document.querySelector('[data-page="sync"]').addEventListener('click',refreshJobs);
@@ -129,31 +129,31 @@ async function loadPicker(){
   const generation=++pickerGeneration;
   const kind=pickerKind, folder=pickerFolder;
   $('picker-title').textContent=kind==='local'?'Scegli cartella locale':'Scegli cartella Proton Drive';
-  $('picker-path').textContent='/'+folder;
+  $('picker-path').textContent=kind==='local'?folder:'/'+folder;
   $('picker-list').textContent='Caricamento cartelle…';
   $('picker-select').disabled=true;
   $('picker-up').disabled=true;
   try{
-    const data=await (await api((kind==='local'?'/api/local':'/api/files')+'?folder='+encodeURIComponent(folder))).json();
+    const data=await (await api((kind==='local'?'/api/server-folders':'/api/files')+'?folder='+encodeURIComponent(folder))).json();
     if(generation!==pickerGeneration)return;
     const list=$('picker-list');list.replaceChildren();
     for(const f of data.files.filter(f=>f.is_dir)){
       const b=document.createElement('button');b.type='button';
       b.textContent='📁 '+f.path.split('/').pop();
-      b.addEventListener('click',()=>{pickerFolder=kind==='local'?[folder,f.path].filter(Boolean).join('/'):f.path;loadPicker();});
+      b.addEventListener('click',()=>{pickerFolder=f.path;loadPicker();});
       list.append(b);
     }
     if(!list.children.length)list.textContent='Nessuna sottocartella';
-    $('picker-select').disabled=false;
+    $('picker-select').disabled=kind==='local'&&folder==='/';
   }catch(e){if(generation===pickerGeneration)$('picker-list').textContent=e.message;}
-  finally{if(generation===pickerGeneration)$('picker-up').disabled=!folder;}
+  finally{if(generation===pickerGeneration)$('picker-up').disabled=!folder||folder==='/';}
 }
 function openPicker(kind){
-  pickerKind=kind;pickerFolder='';$('folder-picker').hidden=false;loadPicker();
+  pickerKind=kind;pickerFolder=kind==='local'?'/':'';$('folder-picker').hidden=false;loadPicker();
 }
 function closePicker(){pickerGeneration++;$('folder-picker').hidden=true;}
 $('pick-local').addEventListener('click',()=>openPicker('local'));
 $('pick-remote').addEventListener('click',()=>openPicker('remote'));
-$('picker-up').addEventListener('click',()=>{pickerFolder=pickerFolder.split('/').slice(0,-1).join('/');loadPicker();});
+$('picker-up').addEventListener('click',()=>{pickerFolder=pickerFolder.split('/').slice(0,-1).join('/')||(pickerKind==='local'?'/':'');loadPicker();});
 $('picker-select').addEventListener('click',()=>{$(pickerKind==='local'?'job-local':'job-remote').value=pickerFolder;closePicker();});
 $('picker-close').addEventListener('click',closePicker);
