@@ -163,6 +163,23 @@ def history():
     with connect() as db:
         return jsonify(history=[dict(r) for r in db.execute('SELECT * FROM history ORDER BY id DESC LIMIT 200')])
 
+@app.get('/api/dashboard')
+def dashboard():
+    require_auth()
+    import shutil
+    from scheduler import connect, LOCAL_ROOT
+    with connect() as db:
+        jobs = [dict(row) for row in db.execute('SELECT * FROM jobs')]
+        last = db.execute('SELECT * FROM history ORDER BY id DESC LIMIT 1').fetchone()
+    disk = None
+    try:
+        usage = shutil.disk_usage(LOCAL_ROOT)
+        disk = dict(total=usage.total, used=usage.used, free=usage.free, path=str(LOCAL_ROOT))
+    except OSError:
+        pass
+    return jsonify(configured=configured(), disk=disk, jobs=jobs,
+                   last=dict(last) if last else None)
+
 @app.get('/api/quota')
 def quota():
     require_auth()
