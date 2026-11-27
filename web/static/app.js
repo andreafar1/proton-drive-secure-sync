@@ -4,7 +4,7 @@ const state={files:[],folder:'',selected:null,busy:false,events:[]};
 const $=id=>document.getElementById(id);
 function log(message){const line=new Date().toLocaleTimeString('it-IT')+' · '+message;state.events.push(line);$('events').textContent=state.events.slice(-200).join('\n');const node=document.createElement('p');node.textContent=line;$('transfers-list').prepend(node);}
 function status(message){$('status').textContent='● '+message;log(message);}
-function page(name){document.querySelectorAll('.page').forEach(e=>e.classList.toggle('hidden',e.id!==name));document.querySelectorAll('.nav').forEach(e=>e.classList.toggle('active',e.dataset.page===name));}
+function page(name){$('file-actions').classList.toggle('hidden',name!=='files');document.querySelectorAll('.page').forEach(e=>e.classList.toggle('hidden',e.id!==name));document.querySelectorAll('.nav').forEach(e=>e.classList.toggle('active',e.dataset.page===name));}
 document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>page(b.dataset.page)));
 async function api(path,options={}){const r=await fetch(path,{credentials:'same-origin',...options,headers:{'X-CSRF-Token':token,...options.headers}});if(r.status===401){location.reload();throw Error('Sessione scaduta');}if(!r.ok){let msg='Richiesta non riuscita ('+r.status+')';try{const data=await r.json();msg=data.error||msg;}catch{}throw Error(msg);}return r;}
 function show(){const tbody=$('file-rows');tbody.replaceChildren();$('path').textContent='Percorso: /'+state.folder;const prefix=state.folder?state.folder+'/':'';const entries=state.files.filter(f=>f.path.toLowerCase().includes($('file-search').value.toLowerCase())).filter(f=>f.path.startsWith(prefix)&&f.path.slice(prefix.length)&&!f.path.slice(prefix.length).includes('/'));for(const f of entries){const tr=document.createElement('tr');if(state.selected===f.path)tr.classList.add('selected');const name=document.createElement('td');name.textContent=(f.is_dir?'📁 ':'📄 ')+f.path.slice(prefix.length);const size=document.createElement('td');size.textContent=f.is_dir?'—':new Intl.NumberFormat('it-IT').format(f.size)+' B';const date=document.createElement('td');date.textContent=f.modified?f.modified.replace('T',' ').slice(0,16):'—';tr.append(name,size,date);tr.addEventListener('click',()=>{state.selected=f.path;show();});tr.addEventListener('dblclick',()=>{if(f.is_dir){if(state.busy)return;state.folder=f.path;state.selected=null;refresh();}});tbody.append(tr);}if(!entries.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=3;td.textContent='Nessun elemento in questa cartella';tr.append(td);tbody.append(tr);}}
@@ -114,15 +114,57 @@ async function refreshHistory(){
 }
 document.querySelector('[data-page="sync"]').addEventListener('click',refreshHistory);
 $('refresh-jobs').addEventListener('click',refreshHistory);
-document.querySelector('[data-page="dashboard"]').addEventListener('click',async()=>{
-  try{const cloud=await (await api('/api/cloud')).json();$('dashboard-status').textContent=cloud.configured?'Proton configurato (stato locale, non verificato)':'Proton non collegato';
-  const data=await (await api('/api/schedules')).json();const next=data.jobs.filter(j=>j.enabled&&j.next_run).sort((a,b)=>a.next_run-b.next_run)[0];$('dashboard-next').textContent=next?'Prossima: '+next.name+' · '+displayTime(next.next_run):'Nessuna attività programmata';}catch(e){$('dashboard-status').textContent=e.message;}
-});
+let dashBusy=false;
+function bytes(n){return Number.isFinite(n)?new Intl.NumberFormat('it-IT',{maximumFractionDigits:1}).format(n/1073741824)+' GiB':'—';}
+function storageCard(prefix,data){
+  const meter=$(prefix+'-meter');
+  meter.hidden=!(Number.isFinite(data?.total)&&data.total>0&&Number.isFinite(data.used));
+  if(!meter.hidden)meter.value=Math.max(0,Math.min(100,100*data.used/data.total));
+  $(prefix+'-value').textContent=bytes(data?.used);
+}
+function dashRow(parent,name,detail,running=false){
+  const row=document.createElement('div');row.className='dash-row';
+  const icon=document.createElement('span');icon.className='dash-row-icon';icon.textContent=running?'↻':'◷';
+  const text=document.createElement('div');const title=document.createElement('strong');title.textContent=name;const sub=document.createElement('p');sub.textContent=detail;text.append(title,sub);row.append(icon,text);
+  if(running){const progress=document.createElement('progress');progress.setAttribute('aria-label','Backup in esecuzione, percentuale non disponibile');row.append(progress);}
+  parent.append(row);
+}
+async function refreshDashboard(){
+  if(dashBusy)return;dashBusy=true;
+  try{
+    const d=await (await api('/api/dashboard')).json();
+    $('dash-error').textContent='';
+    $('dashboard-status').textContent=d.configured?'Configurato · connessione non verificata':'Account non collegato';
+    $('quota-check').disabled=!d.configured||quotaBusy;
+    storageCard('disk',d.disk);
+    $('disk-detail').textContent=d.disk?'di '+bytes(d.disk.total)+' · liberi '+bytes(d.disk.free)+' · '+d.disk.path:'Disco non disponibile';
+    const jobs=d.jobs||[], active=jobs.filter(j=>j.enabled);
+    $('dash-active').textContent=active.length;
+    $('dash-count').textContent=jobs.length+' attività configurate';
+    $('dash-last').textContent=d.last?d.last.status:'Mai eseguito';
+    $('dash-last').classList.toggle('dash-ok',d.last?.status==='Completato');
+    $('dash-last-detail').textContent=d.last?d.last.job_name+' · '+displayTime(d.last.finished):'Nessuna esecuzione registrata';
+    const running=$('dash-running');running.replaceChildren();
+    for(const j of jobs.filter(j=>j.running||j.run_requested))dashRow(running,j.name,j.running?'In esecuzione · percentuale non disponibile':'In attesa di avvio',!!j.running);
+    if(!running.children.length)running.textContent='Nessun backup in corso';
+    const next=$('dashboard-next');next.replaceChildren();
+    for(const j of active.filter(j=>j.next_run&&!j.running).sort((a,b)=>a.next_run-b.next_run))dashRow(next,j.name,displayTime(j.next_run));
+    if(!next.children.length)next.textContent='Nessuna attività programmata';
+  }catch(e){$('dash-error').textContent=e.message;}finally{dashBusy=false;}
+}
+let quotaBusy=false;
 $('quota-check').addEventListener('click',async()=>{
-  const b=$('quota-check');b.disabled=true;$('quota-result').textContent='Lettura spazio…';
-  try{const data=await (await api('/api/quota')).json();$('quota-result').textContent=Object.entries(data).map(([k,v])=>({total:'Totale',used:'Occupato',free:'Libero'}[k])+': '+(v/1073741824).toFixed(2)+' GiB').join(' · ')||'Spazio non comunicato dal remoto';}catch(e){$('quota-result').textContent=e.message;}finally{b.disabled=false;}
+  if(quotaBusy||!confirm('La lettura dello spazio potrebbe generare una notifica di accesso Proton. Continuare?'))return;
+  quotaBusy=true;const b=$('quota-check');b.disabled=true;$('quota-result').textContent='Lettura spazio…';
+  try{const data=await (await api('/api/quota')).json();storageCard('quota',data);$('quota-result').textContent=[Number.isFinite(data.total)?'Totale '+bytes(data.total):'',Number.isFinite(data.free)?'Liberi '+bytes(data.free):''].filter(Boolean).join(' · ')||'Quota totale non comunicata';if(!Object.keys(data).length)$('quota-result').textContent='Spazio non comunicato dal remoto';}catch(e){storageCard('quota',null);$('quota-result').textContent=e.message;}finally{quotaBusy=false;b.disabled=false;}
 });
-refreshLocal();
+function clearQuota(){storageCard('quota',null);$('quota-result').textContent='Lettura su richiesta';}
+$('dashboard-refresh').addEventListener('click',refreshDashboard);
+document.querySelector('[data-page="dashboard"]').addEventListener('click',()=>{clearQuota();refreshDashboard();});
+$('dash-settings').addEventListener('click',()=>document.querySelector('[data-page="settings"]').click());
+$('dash-jobs').addEventListener('click',()=>document.querySelector('[data-page="sync"]').click());
+refreshDashboard();
+setInterval(()=>{if(!document.hidden&&!$('dashboard').classList.contains('hidden'))refreshDashboard();},10000);
 
 let pickerKind='local', pickerFolder='', pickerGeneration=0;
 async function loadPicker(){
